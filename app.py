@@ -1,177 +1,189 @@
 import io
 import time
+from datetime import datetime
 import pandas as pd
 import streamlit as st
 from google import genai
 
-st.set_page_config(page_title="Agentes do Restaurante", page_icon="■", layout="wide")
+st.set_page_config(page_title="Painel do Restaurante", page_icon="🍽️", layout="wide")
 
 ESTILO = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Young+Serif&family=Instrument+Sans:wght@400;500;600&family=Courier+Prime:wght@400;700&display=swap');
 
 :root {
-    --bg: #0A0B0D; --painel: #111215; --linha: #23262B;
-    --texto: #E9E9E6; --mudo: #8A8F98; --acento: #D4FF3A; --alerta: #FF5A36;
+    --garrafa: #17322A; --garrafa-clara: #1F4136; --linha: #2E5446;
+    --papel: #F6F3EA; --mudo: #A9BBB1; --tinta: #22251F;
+    --tomate: #C8432B; --tomate-claro: #D8553C; --mostarda: #E8B04A; --manjericao: #7FBF8E;
     --curva: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.stApp { background: var(--bg); color: var(--texto); }
-.stApp, .stApp p, .stApp label, .stMarkdown, button, input, textarea {
-    font-family: 'Space Grotesk', sans-serif;
+.stApp { background: var(--garrafa); color: var(--papel); }
+.stApp, .stApp p, .stApp label, .stApp li, .stMarkdown, button, input, textarea {
+    font-family: 'Instrument Sans', sans-serif;
 }
 #MainMenu, footer { visibility: hidden; }
 [data-testid="stHeader"] { background: transparent; }
-.block-container { padding-top: 1.6rem; max-width: 1180px; }
+.block-container { padding-top: 2rem; max-width: 1120px; }
 
-/* ---------- entradas (opacidade + subida suave) ---------- */
-@keyframes entrada {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: none; }
+/* ---------- cabeçalho ---------- */
+.cabecalho {
+    display: grid; grid-template-columns: 1fr auto; gap: 48px; align-items: end;
+    padding: 1rem 0 2.4rem 0; margin-bottom: 1.6rem; border-bottom: 1px solid var(--linha);
 }
-@keyframes entrada-mob {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: none; }
+.cabecalho h1 {
+    font-family: 'Young Serif', serif; font-weight: 400; color: var(--papel);
+    font-size: clamp(2.6rem, 5.6vw, 4.6rem); line-height: 1.02; letter-spacing: -.01em;
+    margin: 0; padding: 0;
 }
-.hero-grupo { animation: entrada .8s var(--curva) both; }
-[class*="st-key-rev_"] { animation: entrada 1s var(--curva) .1s both; }
-@media (max-width: 640px) {
-    .hero-grupo { animation-name: entrada-mob; }
-    [class*="st-key-rev_"] { animation-name: entrada-mob; }
+.cabecalho .intro {
+    color: var(--mudo); font-size: 1.05rem; line-height: 1.55; max-width: 46ch;
+    margin: 1.1rem 0 0 0;
 }
-
-/* ---------- topo ---------- */
-.topbar {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    gap: 24px; border-bottom: 1px solid var(--linha);
-    padding: 1rem 0 28px 0;
+.equipe { min-width: 250px; }
+.equipe h2 {
+    font-family: 'Young Serif', serif; font-weight: 400; font-size: 1.05rem;
+    color: var(--papel); margin: 0 0 .6rem 0; padding: 0;
 }
-.marca {
-    font-size: clamp(2.8rem, 6.2vw, 5.4rem); font-weight: 500;
-    letter-spacing: -.045em; line-height: .98; color: var(--texto);
+.equipe ul { list-style: none; margin: 0; padding: 0; }
+.equipe li {
+    display: flex; justify-content: space-between; align-items: center; gap: 24px;
+    padding: .5rem 0; border-top: 1px solid var(--linha); margin: 0;
+    font-size: .98rem; color: var(--papel);
 }
-.marca em { font-style: normal; color: var(--acento); }
-.status {
-    display: inline-flex; align-items: center; white-space: nowrap; margin-top: .7rem;
-    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
-    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+.selo {
+    font-size: .8rem; padding: .15rem .6rem; border-radius: 999px; white-space: nowrap;
 }
-.dot {
-    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--acento); margin-right: 8px; animation: pulso 2s infinite;
-}
-@keyframes pulso { 50% { opacity: .2; } }
-.sub {
-    font-family: 'JetBrains Mono', monospace; font-size: .82rem;
-    color: var(--mudo); max-width: 560px; line-height: 1.6; margin: 1.4rem 0 2rem 0;
-}
-@media (max-width: 640px) {
-    .topbar { flex-direction: column; }
-    .marca { font-size: 2.6rem; }
+.selo.pronto { color: var(--manjericao); background: rgba(127, 191, 142, .12); }
+.selo.producao { color: var(--mostarda); background: rgba(232, 176, 74, .12); }
+.equipe li.desligado { color: var(--mudo); }
+@media (max-width: 720px) {
+    .cabecalho { grid-template-columns: 1fr; gap: 28px; }
+    .cabecalho h1 { font-size: 2.5rem; }
+    .stTabs [role="tablist"] { gap: 22px; }
 }
 
-/* ---------- rótulo de seção ---------- */
-.rotulo {
-    display: flex; gap: 14px; border-top: 1px solid var(--linha);
-    padding-top: 10px; margin: 2.2rem 0 1rem 0;
-    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
-    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+/* ---------- títulos de seção ---------- */
+.titulo-secao {
+    font-family: 'Young Serif', serif; font-weight: 400; font-size: 1.45rem;
+    color: var(--papel); margin: 2.4rem 0 .9rem 0;
 }
-.rotulo span { color: var(--acento); }
+.titulo-secao small {
+    display: block; font-family: 'Instrument Sans', sans-serif; font-size: .92rem;
+    color: var(--mudo); margin-top: .25rem;
+}
 
 /* ---------- abas ---------- */
-.stTabs [data-baseweb="tab-list"] { gap: 30px; border-bottom: 1px solid var(--linha); }
-.stTabs [data-baseweb="tab"] { background: transparent; height: auto; padding: 0 0 12px 0; }
-.stTabs [data-baseweb="tab"] p {
-    font-family: 'JetBrains Mono', monospace; font-size: .8rem;
-    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+.stTabs [role="tablist"] { gap: 36px; border-bottom: 1px solid var(--linha); }
+.stTabs [data-testid="stTab"] { background: transparent; height: auto; padding: 0 0 12px 0; }
+.stTabs [data-testid="stTab"] p {
+    font-family: 'Young Serif', serif; font-size: 1.2rem; color: var(--mudo);
 }
-.stTabs [aria-selected="true"] p { color: var(--acento); }
-.stTabs [data-baseweb="tab-highlight"] { background: var(--acento); height: 2px; }
-.stTabs [data-baseweb="tab-border"] { background: var(--linha); }
+.stTabs [data-testid="stTab"]:hover p { color: var(--papel); }
+.stTabs [data-testid="stTab"][aria-selected="true"] p { color: var(--papel); }
+.stTabs .react-aria-SelectionIndicator { background: var(--tomate-claro) !important; height: 3px !important; }
+.stTabs [data-testid="stTab"]:nth-of-type(n+3) { pointer-events: none; cursor: default; }
+.stTabs [data-testid="stTab"]:nth-of-type(n+3) p { color: #6F8A7E; }
+.stTabs [data-testid="stTab"]:nth-of-type(n+3) p::after {
+    content: "em produção"; margin-left: .6rem; vertical-align: middle;
+    font-family: 'Instrument Sans', sans-serif; font-size: .72rem;
+    color: var(--mostarda); background: rgba(232, 176, 74, .12);
+    padding: .12rem .5rem; border-radius: 999px;
+}
 
 /* ---------- números ---------- */
 [data-testid="stMetric"] {
-    background: var(--painel); border: 1px solid var(--linha);
-    border-radius: 2px; padding: 18px 20px;
+    border-left: 3px solid var(--mostarda); padding: 2px 0 2px 16px;
 }
-[data-testid="stMetricLabel"] p {
-    font-family: 'JetBrains Mono', monospace; font-size: .7rem;
-    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+[data-testid="stMetricLabel"] p { font-size: .95rem; color: var(--mudo); }
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {
+    font-family: 'Young Serif', serif !important; font-size: 2.2rem; color: var(--papel);
 }
-[data-testid="stMetricValue"] {
-    font-family: 'JetBrains Mono', monospace; font-weight: 500;
-    font-size: 1.9rem; letter-spacing: -.03em;
-}
-[data-testid="stMetricDelta"] { font-family: 'JetBrains Mono', monospace; color: var(--mudo); }
+[data-testid="stMetricDelta"] { color: var(--mudo); }
 
-/* ---------- botões (feedback: hover 1.01, clique 0.99) ---------- */
+/* ---------- botões (resposta ao clique) ---------- */
 .stButton > button, [data-testid="stDownloadButton"] > button {
-    border-radius: 2px; border: 1px solid var(--texto); background: transparent;
-    padding: .75rem 1.5rem;
-    transition: transform .25s var(--curva), border-color .25s var(--curva), background-color .25s var(--curva);
+    border-radius: 8px; border: 1px solid var(--papel); background: transparent;
+    padding: .7rem 1.4rem;
+    transition: transform .2s var(--curva), background-color .2s var(--curva), border-color .2s var(--curva);
 }
 .stButton > button p, [data-testid="stDownloadButton"] > button p {
-    font-family: 'JetBrains Mono', monospace; font-size: .78rem;
-    letter-spacing: .1em; text-transform: uppercase; color: var(--texto);
+    font-size: 1rem; font-weight: 600; color: var(--papel);
 }
 .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
-    transform: scale(1.01); border-color: var(--acento);
+    background: rgba(246, 243, 234, .08); border-color: var(--papel);
 }
-.stButton > button:hover p, [data-testid="stDownloadButton"] > button:hover p { color: var(--acento); }
-.stButton > button:active, [data-testid="stDownloadButton"] > button:active {
-    transform: scale(.99); transition-duration: .1s;
-}
-button[data-testid="stBaseButton-primary"] { background: var(--acento); border: 1px solid var(--acento); }
-button[data-testid="stBaseButton-primary"] p { color: #0A0B0D; font-weight: 700; }
-button[data-testid="stBaseButton-primary"]:hover { background: #E6FF7A; border-color: #E6FF7A; }
-button[data-testid="stBaseButton-primary"]:hover p { color: #0A0B0D; }
+.stButton > button:active, [data-testid="stDownloadButton"] > button:active { transform: scale(.98); }
+button[data-testid="stBaseButton-primary"] { background: var(--tomate); border-color: var(--tomate); }
+button[data-testid="stBaseButton-primary"]:hover { background: var(--tomate-claro); border-color: var(--tomate-claro); }
+button:focus-visible { outline: 2px solid var(--mostarda) !important; outline-offset: 3px; }
 
 /* ---------- upload, tabelas, expanders ---------- */
 [data-testid="stFileUploader"] section {
-    border: 1px dashed #3A3E46; border-radius: 2px; background: var(--painel);
+    border: 1.5px dashed #5C7D70; border-radius: 10px; background: var(--garrafa-clara);
 }
-[data-testid="stFileUploader"] section:hover { border-color: var(--acento); }
+[data-testid="stFileUploader"] section:hover { border-color: var(--papel); }
 [data-testid="stFileUploader"] label p, [data-testid="stNumberInput"] label p {
-    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
-    letter-spacing: .12em; text-transform: uppercase; color: var(--mudo);
+    font-size: .98rem; color: var(--papel);
 }
-[data-testid="stDataFrame"] { border: 1px solid var(--linha); border-radius: 2px; }
-[data-testid="stExpander"] {
-    border: 1px solid var(--linha); border-radius: 2px; background: var(--painel);
+[data-testid="stDataFrame"] { border-radius: 8px; overflow: hidden; }
+[data-testid="stExpander"] details {
+    border: 1px solid var(--linha); border-radius: 10px; background: var(--garrafa-clara);
 }
-[data-testid="stExpander"] summary p {
-    font-family: 'JetBrains Mono', monospace; font-size: .76rem;
-    letter-spacing: .1em; text-transform: uppercase;
-}
-[data-baseweb="input"], [data-baseweb="base-input"] { border-radius: 2px; }
+[data-testid="stExpander"] summary p { font-size: 1rem; font-weight: 600; }
 
-/* ---------- relatório da IA (painel) ---------- */
-[class*="st-key-rev_"][class*="_relatorio"] {
-    background: var(--painel); border: 1px solid var(--linha);
-    border-left: 2px solid var(--acento); border-radius: 2px; padding: 22px 26px;
-    margin-top: 2.2rem;
+/* ---------- a comanda: relatório da IA impresso ---------- */
+@keyframes imprimir {
+    from { clip-path: inset(0 0 100% 0); transform: translateY(-14px); }
+    to { clip-path: inset(0 0 -20px 0); transform: none; }
 }
-[class*="st-key-rev_"][class*="_relatorio"] .rotulo {
-    border-top: none; padding-top: 0; margin: 0 0 .4rem 0;
+[class*="st-key-ticket_"] {
+    position: relative; max-width: 620px; margin: 2.6rem 0 2.2rem 0;
+    background: var(--papel); color: var(--tinta);
+    padding: 26px 30px 34px 30px; border-radius: 2px 2px 0 0;
+    box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .55);
+    animation: imprimir 1.1s var(--curva) both;
 }
+[class*="st-key-ticket_"]::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -10px; height: 10px;
+    background:
+        linear-gradient(135deg, var(--papel) 5px, transparent 0) 0 0 / 14px 10px repeat-x,
+        linear-gradient(225deg, var(--papel) 5px, transparent 0) 0 0 / 14px 10px repeat-x;
+}
+[class*="st-key-ticket_"] p, [class*="st-key-ticket_"] li,
+[class*="st-key-ticket_"] strong, [class*="st-key-ticket_"] span {
+    font-family: 'Courier Prime', monospace; color: var(--tinta); font-size: .98rem; line-height: 1.6;
+}
+[class*="st-key-ticket_"] h1, [class*="st-key-ticket_"] h2,
+[class*="st-key-ticket_"] h3, [class*="st-key-ticket_"] h4 {
+    font-family: 'Courier Prime', monospace; font-weight: 700; color: var(--tinta);
+    font-size: 1.05rem; padding: .6rem 0 .2rem 0;
+}
+.ticket-topo {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    border-bottom: 2px dashed #B9B3A3; padding-bottom: 12px; margin-bottom: 6px;
+}
+.ticket-topo strong { font-size: 1.15rem !important; }
 
 /* ---------- avisos ---------- */
 .aviso {
-    display: flex; align-items: center; gap: 12px; margin: 1rem 0;
-    padding: 12px 16px; border: 1px solid; border-radius: 2px;
-    font-family: 'JetBrains Mono', monospace; font-size: .78rem; letter-spacing: .12em;
+    margin: 1.2rem 0; padding: 12px 16px; border-radius: 8px; font-size: 1rem; font-weight: 600;
 }
-.aviso::before { content: ""; width: 8px; height: 8px; background: currentColor; }
-.aviso.alerta { color: var(--alerta); border-color: var(--alerta); }
-.aviso.ok { color: var(--acento); border-color: var(--acento); }
+.aviso.alerta { color: #FFD9CF; background: rgba(200, 67, 43, .28); border-left: 4px solid var(--tomate-claro); }
+.aviso.ok { color: #D3F0DA; background: rgba(127, 191, 142, .16); border-left: 4px solid var(--manjericao); }
 
-/* ---------- movimento reduzido: sem subida, sem escala, sem pulso ---------- */
+/* ---------- em produção ---------- */
+.em-producao {
+    max-width: 52ch; margin: 2rem 0; padding: 22px 24px; border-radius: 10px;
+    background: var(--garrafa-clara); border: 1px dashed var(--mostarda);
+}
+.em-producao h3 { font-family: 'Young Serif', serif; font-weight: 400; color: var(--papel); padding: 0; margin: 0 0 .4rem 0; }
+.em-producao p { color: var(--mudo); margin: 0; }
+
+/* ---------- movimento reduzido ---------- */
 @media (prefers-reduced-motion: reduce) {
-    .hero-grupo, [class*="st-key-rev_"] { animation: none; }
-    .dot { animation: none; }
+    [class*="st-key-ticket_"] { animation: none; }
     .stButton > button, [data-testid="stDownloadButton"] > button { transition: none; }
-    .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover,
     .stButton > button:active, [data-testid="stDownloadButton"] > button:active { transform: none; }
 }
 </style>
@@ -179,20 +191,34 @@ button[data-testid="stBaseButton-primary"]:hover p { color: #0A0B0D; }
 st.markdown(ESTILO, unsafe_allow_html=True)
 
 CFG = {
-    "funcionario": "FUNCIONÁRIO", "saldo": "SALDO", "situacao": "SITUAÇÃO",
-    "data": "DATA", "entrada": "ENTRADA", "saida": "SAÍDA",
-    "forma": "FORMA", "status": "STATUS", "descricao": "DESCRIÇÃO",
-    "esperado": st.column_config.NumberColumn("ESPERADO", format="R$ %.2f"),
-    "recebido": st.column_config.NumberColumn("RECEBIDO", format="R$ %.2f"),
-    "diferenca": st.column_config.NumberColumn("DIFERENÇA", format="R$ %.2f"),
-    "valor": st.column_config.NumberColumn("VALOR", format="R$ %.2f"),
+    "funcionario": "Funcionário", "saldo": "Saldo", "situacao": "Situação",
+    "data": "Data", "entrada": "Entrada", "saida": "Saída",
+    "forma": "Forma", "status": "Status", "descricao": "Descrição",
+    "esperado": st.column_config.NumberColumn("Esperado", format="R$ %.2f"),
+    "recebido": st.column_config.NumberColumn("Recebido", format="R$ %.2f"),
+    "diferenca": st.column_config.NumberColumn("Diferença", format="R$ %.2f"),
+    "valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
 }
 
 
 # ---------- funções comuns ----------
-def rotulo(numero, texto):
+def titulo(texto, detalhe=""):
+    extra = f"<small>{detalhe}</small>" if detalhe else ""
+    st.markdown(f'<div class="titulo-secao">{texto}{extra}</div>', unsafe_allow_html=True)
+
+
+def comanda(nome, relatorio):
     st.markdown(
-        f'<div class="rotulo"><span>{numero}</span>{texto}</div>',
+        f'<div class="ticket-topo"><strong>{nome}</strong>'
+        f'<span>{datetime.now():%d/%m/%Y %H:%M}</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(relatorio)
+
+
+def em_producao(nome, descricao):
+    st.markdown(
+        f'<div class="em-producao"><h3>{nome} está em produção</h3><p>{descricao}</p></div>',
         unsafe_allow_html=True,
     )
 
@@ -246,10 +272,9 @@ def perguntar_ia(pedido):
 
 # ---------- página do RH ----------
 def pagina_rh():
-    with st.container(key="rev_rh_entrada"):
-        rotulo("01", "Entrada de dados · planilha com as abas escala e ponto")
-        arq = st.file_uploader("Planilha do RH (.xlsx)", type=["xlsx"], key="upload_rh")
-        calcular = bool(arq) and st.button("Calcular horas", type="primary", key="btn_rh")
+    titulo("Envie a planilha do RH", "Um arquivo .xlsx com as abas escala e ponto.")
+    arq = st.file_uploader("Planilha do RH (.xlsx)", type=["xlsx"], key="upload_rh")
+    calcular = bool(arq) and st.button("Calcular horas", type="primary", key="btn_rh")
 
     if calcular:
         escala = padronizar_data(pd.read_excel(arq, sheet_name="escala"))
@@ -275,7 +300,7 @@ def pagina_rh():
             "situação dele for 'compensar'. Use apenas os números fornecidos, sem calcular "
             "nada.\n\n" + resumo
         )
-        with st.spinner("Processando relatório..."):
+        with st.spinner("Escrevendo o relatório..."):
             relatorio = perguntar_ia(pedido)
 
         st.session_state["resultado_rh"] = {
@@ -287,52 +312,47 @@ def pagina_rh():
         topo = r["total"].sort_values("saldo_min", ascending=False).iloc[0]
         extras = r["total"][r["total"]["saldo_min"] > 0]["saldo_min"].sum()
 
-        with st.container(key="rev_rh_resumo"):
-            rotulo("02", "Resumo")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Funcionários", len(r["total"]))
-            c2.metric("Horas extras no total", formatar(extras))
-            c3.metric("Maior saldo", topo["funcionario"], topo["saldo"], delta_color="off")
+        titulo("Resumo da semana")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Funcionários", len(r["total"]))
+        c2.metric("Horas extras no total", formatar(extras))
+        c3.metric("Maior saldo", topo["funcionario"], topo["saldo"], delta_color="off")
 
-        with st.container(key="rev_rh_tabela"):
-            rotulo("03", "Saldo por funcionário")
+        with st.container(key="ticket_rh"):
+            comanda("Relatório do RH", r["relatorio"])
+
+        titulo("Saldo por funcionário")
+        st.dataframe(
+            r["total"][["funcionario", "saldo", "situacao"]],
+            hide_index=True, column_config=CFG,
+        )
+
+        titulo("Detalhes e exportação")
+        with st.expander("Ver o saldo de cada dia"):
             st.dataframe(
-                r["total"][["funcionario", "saldo", "situacao"]],
+                r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
                 hide_index=True, column_config=CFG,
             )
-
-        with st.container(key="rev_rh_relatorio"):
-            rotulo("04", "Relatório · IA")
-            st.markdown(r["relatorio"])
-
-        with st.container(key="rev_rh_export"):
-            rotulo("05", "Detalhes e exportação")
-            with st.expander("Detalhe por dia"):
-                st.dataframe(
-                    r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
-                    hide_index=True, column_config=CFG,
-                )
-            st.download_button(
-                "Baixar relatório (.xlsx)",
-                para_excel({
-                    "por_dia": r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
-                    "total": r["total"][["funcionario", "saldo", "situacao"]],
-                }),
-                file_name="relatorio_rh.xlsx",
-            )
+        st.download_button(
+            "Baixar relatório (.xlsx)",
+            para_excel({
+                "por_dia": r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
+                "total": r["total"][["funcionario", "saldo", "situacao"]],
+            }),
+            file_name="relatorio_rh.xlsx",
+        )
 
 
 # ---------- página do Financeiro ----------
 def pagina_financeiro():
-    with st.container(key="rev_fin_entrada"):
-        rotulo("01", "Entrada de dados · vendas do sistema e extrato do banco")
-        col1, col2 = st.columns(2)
-        f_vendas = col1.file_uploader("Vendas do sistema", type=["csv", "xlsx"], key="upload_vendas")
-        f_extrato = col2.file_uploader("Extrato do banco", type=["csv", "xlsx"], key="upload_extrato")
-        taxa = st.number_input("Taxa do cartão (%)", value=2.0, step=0.1) / 100
-        conciliar = bool(f_vendas and f_extrato) and st.button(
-            "Conciliar", type="primary", key="btn_fin"
-        )
+    titulo("Envie as vendas e o extrato", "Arquivos .csv ou .xlsx do sistema de vendas e do banco.")
+    col1, col2 = st.columns(2)
+    f_vendas = col1.file_uploader("Vendas do sistema", type=["csv", "xlsx"], key="upload_vendas")
+    f_extrato = col2.file_uploader("Extrato do banco", type=["csv", "xlsx"], key="upload_extrato")
+    taxa = st.number_input("Taxa do cartão (%)", value=2.0, step=0.1) / 100
+    conciliar = bool(f_vendas and f_extrato) and st.button(
+        "Conferir pagamentos", type="primary", key="btn_fin"
+    )
 
     if conciliar:
         vendas = padronizar_data(ler_arquivo(f_vendas))
@@ -371,7 +391,7 @@ def pagina_financeiro():
             "as divergências (e o valor) e liste as contas pagas. Use apenas os números "
             "fornecidos, sem calcular nada e sem inventar causas.\n\n" + resumo
         )
-        with st.spinner("Processando relatório..."):
+        with st.spinner("Escrevendo o relatório..."):
             relatorio = perguntar_ia(pedido)
 
         st.session_state["resultado_fin"] = {
@@ -383,61 +403,64 @@ def pagina_financeiro():
         r = st.session_state["resultado_fin"]
         n = len(r["divergentes"])
 
-        with st.container(key="rev_fin_resumo"):
-            rotulo("02", "Resumo")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Vendas conciliadas", len(r["conc"]))
-            c2.metric("Divergências", n)
-            c3.metric("Contas pagas", brl(abs(r["contas"]["valor"].sum())))
-            if n:
-                plural = "S" if n > 1 else ""
-                st.markdown(
-                    f'<div class="aviso alerta">{n} DIVERGÊNCIA{plural} ENCONTRADA{plural}</div>',
-                    unsafe_allow_html=True,
-                )
-                st.dataframe(r["divergentes"], hide_index=True, column_config=CFG)
-            else:
-                st.markdown(
-                    '<div class="aviso ok">TUDO CONFERIDO · NENHUMA DIVERGÊNCIA</div>',
-                    unsafe_allow_html=True,
-                )
-
-        with st.container(key="rev_fin_relatorio"):
-            rotulo("03", "Relatório · IA")
-            st.markdown(r["relatorio"])
-
-        with st.container(key="rev_fin_export"):
-            rotulo("04", "Detalhes e exportação")
-            with st.expander("Conciliação completa"):
-                st.dataframe(r["conc"], hide_index=True, column_config=CFG)
-            with st.expander("Contas pagas no período"):
-                st.dataframe(r["contas"], hide_index=True, column_config=CFG)
-            st.download_button(
-                "Baixar relatório (.xlsx)",
-                para_excel({
-                    "conciliacao": r["conc"],
-                    "divergencias": r["divergentes"],
-                    "contas_pagas": r["contas"],
-                }),
-                file_name="relatorio_financeiro.xlsx",
+        titulo("Resumo do período")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Vendas conferidas", len(r["conc"]))
+        c2.metric("Divergências", n)
+        c3.metric("Contas pagas", brl(abs(r["contas"]["valor"].sum())))
+        if n:
+            texto = "1 pagamento não bateu com o banco" if n == 1 else f"{n} pagamentos não bateram com o banco"
+            st.markdown(f'<div class="aviso alerta">{texto}. Veja quais abaixo.</div>', unsafe_allow_html=True)
+            st.dataframe(r["divergentes"], hide_index=True, column_config=CFG)
+        else:
+            st.markdown(
+                '<div class="aviso ok">Todos os pagamentos bateram com o banco.</div>',
+                unsafe_allow_html=True,
             )
+
+        with st.container(key="ticket_fin"):
+            comanda("Relatório financeiro", r["relatorio"])
+
+        titulo("Detalhes e exportação")
+        with st.expander("Ver a conferência completa"):
+            st.dataframe(r["conc"], hide_index=True, column_config=CFG)
+        with st.expander("Ver as contas pagas no período"):
+            st.dataframe(r["contas"], hide_index=True, column_config=CFG)
+        st.download_button(
+            "Baixar relatório (.xlsx)",
+            para_excel({
+                "conciliacao": r["conc"],
+                "divergencias": r["divergentes"],
+                "contas_pagas": r["contas"],
+            }),
+            file_name="relatorio_financeiro.xlsx",
+        )
 
 
 # ---------- montagem do site ----------
 st.markdown(
-    '<div class="hero-grupo">'
-    '<div class="topbar">'
-    '<div class="marca">Painel operacional<br><em>de agentes</em></div>'
-    '<span class="status"><i class="dot"></i>2 AGENTES ATIVOS</span>'
+    '<div class="cabecalho">'
+    '<div>'
+    '<h1>O que vamos<br>resolver hoje?</h1>'
+    '<p class="intro">Envie a planilha e o painel faz as contas e escreve o '
+    'relatório para você.</p>'
     '</div>'
-    '<div class="sub">RH e financeiro em um só lugar. Envie as planilhas, '
-    'receba o cálculo e o relatório.</div>'
+    '<div class="equipe"><h2>Sua equipe</h2><ul>'
+    '<li>RH <span class="selo pronto">pronto</span></li>'
+    '<li>Financeiro <span class="selo pronto">pronto</span></li>'
+    '<li class="desligado">Compras <span class="selo producao">em produção</span></li>'
+    '<li class="desligado">Marketing <span class="selo producao">em produção</span></li>'
+    '</ul></div>'
     '</div>',
     unsafe_allow_html=True,
 )
 
-aba_rh, aba_fin = st.tabs(["RH", "Financeiro"])
+aba_rh, aba_fin, aba_compras, aba_mkt = st.tabs(["RH", "Financeiro", "Compras", "Marketing"])
 with aba_rh:
     pagina_rh()
 with aba_fin:
     pagina_financeiro()
+with aba_compras:
+    em_producao("Compras", "Em breve o painel vai montar a lista de compras a partir do estoque e dos pedidos.")
+with aba_mkt:
+    em_producao("Marketing", "Em breve o painel vai buscar as notícias do dia, criar os posts e agendar no Instagram.")
