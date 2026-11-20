@@ -4,10 +4,164 @@ import pandas as pd
 import streamlit as st
 from google import genai
 
-st.set_page_config(page_title="Agentes do Restaurante", page_icon="🍽️", layout="wide")
+st.set_page_config(page_title="Agentes do Restaurante", page_icon="■", layout="wide")
+
+ESTILO = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+    --bg: #0A0B0D; --painel: #111215; --linha: #23262B;
+    --texto: #E9E9E6; --mudo: #8A8F98; --acento: #D4FF3A; --alerta: #FF5A36;
+}
+
+.stApp { background: var(--bg); color: var(--texto); }
+.stApp, .stApp p, .stApp label, .stMarkdown, button, input, textarea {
+    font-family: 'Space Grotesk', sans-serif;
+}
+#MainMenu, footer { visibility: hidden; }
+[data-testid="stHeader"] { background: transparent; }
+.block-container { padding-top: 1.6rem; max-width: 1180px; }
+
+/* topo */
+.topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--linha); padding-bottom: 14px;
+    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+}
+.topbar b { color: var(--texto); font-weight: 700; }
+.topbar .slash { color: var(--acento); margin: 0 6px; }
+.dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--acento); margin-right: 8px; animation: pulso 2s infinite;
+}
+@keyframes pulso { 50% { opacity: .2; } }
+
+.titulo {
+    font-size: clamp(2.8rem, 6vw, 4.8rem); font-weight: 500;
+    letter-spacing: -.045em; line-height: .98; margin: 2.6rem 0 1rem 0;
+}
+.titulo em { font-style: normal; color: var(--acento); }
+.sub {
+    font-family: 'JetBrains Mono', monospace; font-size: .82rem;
+    color: var(--mudo); max-width: 560px; line-height: 1.6; margin-bottom: 2.4rem;
+}
+
+/* rótulo de seção */
+.rotulo {
+    display: flex; gap: 14px; border-top: 1px solid var(--linha);
+    padding-top: 10px; margin: 2.2rem 0 1rem 0;
+    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+}
+.rotulo span { color: var(--acento); }
+
+/* abas */
+.stTabs [data-baseweb="tab-list"] { gap: 30px; border-bottom: 1px solid var(--linha); }
+.stTabs [data-baseweb="tab"] { background: transparent; height: auto; padding: 0 0 12px 0; }
+.stTabs [data-baseweb="tab"] p {
+    font-family: 'JetBrains Mono', monospace; font-size: .8rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+}
+.stTabs [aria-selected="true"] p { color: var(--acento); }
+.stTabs [data-baseweb="tab-highlight"] { background: var(--acento); height: 2px; }
+.stTabs [data-baseweb="tab-border"] { background: var(--linha); }
+
+/* números */
+[data-testid="stMetric"] {
+    background: var(--painel); border: 1px solid var(--linha);
+    border-radius: 2px; padding: 18px 20px;
+}
+[data-testid="stMetricLabel"] p {
+    font-family: 'JetBrains Mono', monospace; font-size: .7rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+}
+[data-testid="stMetricValue"] {
+    font-family: 'JetBrains Mono', monospace; font-weight: 500;
+    font-size: 1.9rem; letter-spacing: -.03em;
+}
+[data-testid="stMetricDelta"] { font-family: 'JetBrains Mono', monospace; color: var(--mudo); }
+
+/* botões */
+.stButton > button, [data-testid="stDownloadButton"] > button {
+    border-radius: 2px; border: 1px solid var(--texto); background: transparent;
+    padding: .75rem 1.5rem; transition: none;
+}
+.stButton > button p, [data-testid="stDownloadButton"] > button p {
+    font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--texto);
+}
+.stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
+    border-color: var(--acento);
+}
+.stButton > button:hover p, [data-testid="stDownloadButton"] > button:hover p {
+    color: var(--acento);
+}
+button[data-testid="stBaseButton-primary"] {
+    background: var(--acento); border: 1px solid var(--acento);
+}
+button[data-testid="stBaseButton-primary"] p { color: #0A0B0D; font-weight: 700; }
+button[data-testid="stBaseButton-primary"]:hover { background: #E6FF7A; border-color: #E6FF7A; }
+button[data-testid="stBaseButton-primary"]:hover p { color: #0A0B0D; }
+
+/* upload, tabelas, expanders */
+[data-testid="stFileUploader"] section {
+    border: 1px dashed #3A3E46; border-radius: 2px; background: var(--painel);
+}
+[data-testid="stFileUploader"] section:hover { border-color: var(--acento); }
+[data-testid="stFileUploader"] label p, [data-testid="stNumberInput"] label p {
+    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--mudo);
+}
+[data-testid="stDataFrame"] { border: 1px solid var(--linha); border-radius: 2px; }
+[data-testid="stExpander"] {
+    border: 1px solid var(--linha); border-radius: 2px; background: var(--painel);
+}
+[data-testid="stExpander"] summary p {
+    font-family: 'JetBrains Mono', monospace; font-size: .76rem;
+    letter-spacing: .1em; text-transform: uppercase;
+}
+[data-baseweb="input"], [data-baseweb="base-input"] { border-radius: 2px; }
+
+/* relatório da IA */
+.st-key-rel_rh, .st-key-rel_fin {
+    background: var(--painel); border: 1px solid var(--linha);
+    border-left: 2px solid var(--acento); border-radius: 2px; padding: 22px 26px;
+}
+
+/* avisos */
+.aviso {
+    display: flex; align-items: center; gap: 12px; margin: 1rem 0;
+    padding: 12px 16px; border: 1px solid; border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace; font-size: .78rem; letter-spacing: .12em;
+}
+.aviso::before { content: ""; width: 8px; height: 8px; background: currentColor; }
+.aviso.alerta { color: var(--alerta); border-color: var(--alerta); }
+.aviso.ok { color: var(--acento); border-color: var(--acento); }
+</style>
+"""
+st.markdown(ESTILO, unsafe_allow_html=True)
+
+CFG = {
+    "funcionario": "FUNCIONÁRIO", "saldo": "SALDO", "situacao": "SITUAÇÃO",
+    "data": "DATA", "entrada": "ENTRADA", "saida": "SAÍDA",
+    "forma": "FORMA", "status": "STATUS", "descricao": "DESCRIÇÃO",
+    "esperado": st.column_config.NumberColumn("ESPERADO", format="R$ %.2f"),
+    "recebido": st.column_config.NumberColumn("RECEBIDO", format="R$ %.2f"),
+    "diferenca": st.column_config.NumberColumn("DIFERENÇA", format="R$ %.2f"),
+    "valor": st.column_config.NumberColumn("VALOR", format="R$ %.2f"),
+}
 
 
 # ---------- funções comuns ----------
+def rotulo(numero, texto):
+    st.markdown(
+        f'<div class="rotulo"><span>{numero}</span>{texto}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def minutos(hora):
     h, m = str(hora).split(":")[:2]
     return int(h) * 60 + int(m)
@@ -17,6 +171,10 @@ def formatar(min_total):
     sinal = "+" if min_total >= 0 else "-"
     h, m = divmod(abs(int(min_total)), 60)
     return f"{sinal}{h}h{m:02d}"
+
+
+def brl(valor):
+    return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def ler_arquivo(arquivo):
@@ -53,8 +211,7 @@ def perguntar_ia(pedido):
 
 # ---------- página do RH ----------
 def pagina_rh():
-    st.header("👥 RH: horas extras e compensação")
-    st.caption("Envie a planilha com as abas 'escala' e 'ponto'.")
+    rotulo("01", "Entrada de dados · planilha com as abas escala e ponto")
     arq = st.file_uploader("Planilha do RH (.xlsx)", type=["xlsx"], key="upload_rh")
 
     if arq and st.button("Calcular horas", type="primary", key="btn_rh"):
@@ -81,7 +238,7 @@ def pagina_rh():
             "situação dele for 'compensar'. Use apenas os números fornecidos, sem calcular "
             "nada.\n\n" + resumo
         )
-        with st.spinner("A IA está escrevendo o relatório..."):
+        with st.spinner("Processando relatório..."):
             relatorio = perguntar_ia(pedido)
 
         st.session_state["resultado_rh"] = {
@@ -90,14 +247,33 @@ def pagina_rh():
 
     if "resultado_rh" in st.session_state:
         r = st.session_state["resultado_rh"]
-        st.subheader("Saldo por funcionário")
-        st.dataframe(r["total"][["funcionario", "saldo", "situacao"]])
-        st.subheader("Relatório da IA")
-        st.write(r["relatorio"])
-        with st.expander("Ver detalhe por dia"):
-            st.dataframe(r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]])
+
+        rotulo("02", "Resumo")
+        topo = r["total"].sort_values("saldo_min", ascending=False).iloc[0]
+        extras = r["total"][r["total"]["saldo_min"] > 0]["saldo_min"].sum()
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Funcionários", len(r["total"]))
+        c2.metric("Horas extras no total", formatar(extras))
+        c3.metric("Maior saldo", topo["funcionario"], topo["saldo"], delta_color="off")
+
+        rotulo("03", "Saldo por funcionário")
+        st.dataframe(
+            r["total"][["funcionario", "saldo", "situacao"]],
+            hide_index=True, column_config=CFG,
+        )
+
+        rotulo("04", "Relatório · IA")
+        with st.container(key="rel_rh"):
+            st.markdown(r["relatorio"])
+
+        rotulo("05", "Detalhes e exportação")
+        with st.expander("Detalhe por dia"):
+            st.dataframe(
+                r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
+                hide_index=True, column_config=CFG,
+            )
         st.download_button(
-            "⬇️ Baixar relatório em Excel",
+            "Baixar relatório (.xlsx)",
             para_excel({
                 "por_dia": r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
                 "total": r["total"][["funcionario", "saldo", "situacao"]],
@@ -108,7 +284,7 @@ def pagina_rh():
 
 # ---------- página do Financeiro ----------
 def pagina_financeiro():
-    st.header("💰 Financeiro: conciliação")
+    rotulo("01", "Entrada de dados · vendas do sistema e extrato do banco")
     col1, col2 = st.columns(2)
     f_vendas = col1.file_uploader("Vendas do sistema", type=["csv", "xlsx"], key="upload_vendas")
     f_extrato = col2.file_uploader("Extrato do banco", type=["csv", "xlsx"], key="upload_extrato")
@@ -151,7 +327,7 @@ def pagina_financeiro():
             "as divergências (e o valor) e liste as contas pagas. Use apenas os números "
             "fornecidos, sem calcular nada e sem inventar causas.\n\n" + resumo
         )
-        with st.spinner("A IA está escrevendo o relatório..."):
+        with st.spinner("Processando relatório..."):
             relatorio = perguntar_ia(pedido)
 
         st.session_state["resultado_fin"] = {
@@ -161,19 +337,38 @@ def pagina_financeiro():
 
     if "resultado_fin" in st.session_state:
         r = st.session_state["resultado_fin"]
-        if len(r["divergentes"]):
-            st.error(f"{len(r['divergentes'])} divergência(s) encontrada(s)")
-            st.dataframe(r["divergentes"])
+
+        rotulo("02", "Resumo")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Vendas conciliadas", len(r["conc"]))
+        c2.metric("Divergências", len(r["divergentes"]))
+        c3.metric("Contas pagas", brl(abs(r["contas"]["valor"].sum())))
+
+        n = len(r["divergentes"])
+        if n:
+            plural = "S" if n > 1 else ""
+            st.markdown(
+                f'<div class="aviso alerta">{n} DIVERGÊNCIA{plural} ENCONTRADA{plural}</div>',
+                unsafe_allow_html=True,
+            )
+            st.dataframe(r["divergentes"], hide_index=True, column_config=CFG)
         else:
-            st.success("Tudo conferido: nenhuma divergência!")
-        st.subheader("Relatório da IA")
-        st.write(r["relatorio"])
-        with st.expander("Ver conciliação completa"):
-            st.dataframe(r["conc"])
+            st.markdown(
+                '<div class="aviso ok">TUDO CONFERIDO · NENHUMA DIVERGÊNCIA</div>',
+                unsafe_allow_html=True,
+            )
+
+        rotulo("03", "Relatório · IA")
+        with st.container(key="rel_fin"):
+            st.markdown(r["relatorio"])
+
+        rotulo("04", "Detalhes e exportação")
+        with st.expander("Conciliação completa"):
+            st.dataframe(r["conc"], hide_index=True, column_config=CFG)
         with st.expander("Contas pagas no período"):
-            st.dataframe(r["contas"])
+            st.dataframe(r["contas"], hide_index=True, column_config=CFG)
         st.download_button(
-            "⬇️ Baixar relatório em Excel",
+            "Baixar relatório (.xlsx)",
             para_excel({
                 "conciliacao": r["conc"],
                 "divergencias": r["divergentes"],
@@ -184,8 +379,16 @@ def pagina_financeiro():
 
 
 # ---------- montagem do site ----------
-st.title("🍽️ Agentes do Restaurante")
-aba_rh, aba_fin = st.tabs(["👥 RH", "💰 Financeiro"])
+st.markdown(
+    '<div class="topbar"><span><b>AGENTES</b><span class="slash">/</span>RESTAURANTE</span>'
+    '<span><i class="dot"></i>2 AGENTES ATIVOS</span></div>'
+    '<div class="titulo">Painel<br><em>operacional</em></div>'
+    '<div class="sub">RH e financeiro em um só lugar. Envie as planilhas, '
+    'receba o cálculo e o relatório.</div>',
+    unsafe_allow_html=True,
+)
+
+aba_rh, aba_fin = st.tabs(["RH", "Financeiro"])
 with aba_rh:
     pagina_rh()
 with aba_fin:
