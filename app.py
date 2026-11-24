@@ -1,334 +1,200 @@
-import hmac
 import io
 import time
-from datetime import datetime
 import pandas as pd
 import streamlit as st
 from google import genai
 
-st.set_page_config(page_title="hnos system A", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Agentes do Restaurante", page_icon="■", layout="wide")
 
-
-# ---------- os agentes ----------
-ROBOS = {
-    "rh": (
-        '<line x1="32" y1="8" x2="32" y2="14"/><circle cx="32" cy="6" r="3" fill="currentColor"/>'
-        '<rect x="14" y="14" width="36" height="28" rx="14"/>'
-        '<circle cx="25" cy="27" r="3" fill="currentColor"/><circle cx="39" cy="27" r="3" fill="currentColor"/>'
-        '<path d="M26 34 q6 5 12 0"/>'
-        '<path d="M32 59 l-7-7 a4 4 0 0 1 7-5 a4 4 0 0 1 7 5z" fill="currentColor"/>'
-    ),
-    "financeiro": (
-        '<rect x="14" y="10" width="36" height="30" rx="6"/>'
-        '<line x1="9" y1="25" x2="14" y2="25"/><line x1="50" y1="25" x2="55" y2="25"/>'
-        '<rect x="22" y="19" width="6" height="6" rx="1" fill="currentColor"/>'
-        '<rect x="36" y="19" width="6" height="6" rx="1" fill="currentColor"/>'
-        '<line x1="25" y1="32" x2="39" y2="32"/>'
-        '<circle cx="32" cy="52" r="9"/>'
-        '<path d="M35.5 48.5 q-3.5-2-7 0 q-2 2.2 1.5 3.5 l4 1 q3 1.5 1 3.6 q-3.5 2-7 0 M32 44.5 v15"/>'
-    ),
-    "compras": (
-        '<path d="M21 8 l4 7 M43 8 l-4 7"/>'
-        '<rect x="16" y="15" width="32" height="24" rx="10"/>'
-        '<rect x="22" y="22" width="20" height="7" rx="3.5" fill="currentColor"/>'
-        '<path d="M10 43 h6 l5 11 h22 l5-9 H18"/>'
-        '<circle cx="25" cy="59" r="2.6" fill="currentColor"/><circle cx="39" cy="59" r="2.6" fill="currentColor"/>'
-    ),
-    "marketing": (
-        '<line x1="24" y1="7" x2="24" y2="14"/><circle cx="24" cy="5" r="3" fill="currentColor"/>'
-        '<rect x="9" y="14" width="30" height="28" rx="12"/>'
-        '<circle cx="19" cy="26" r="3" fill="currentColor"/><circle cx="30" cy="26" r="3" fill="currentColor"/>'
-        '<circle cx="24.5" cy="34" r="2.6"/>'
-        '<path d="M42 23 l12-8 v24 l-12-8z"/><path d="M58 21 q3 6 0 12"/>'
-        '<path d="M16 42 v10 M32 42 v10 M12 56 h24"/>'
-    ),
-}
-
-AGENTES = {
-    "rh": {
-        "nome": "RH", "cor": "#5B5BD6", "tinta": "#EEEEFC", "ativo": True,
-        "serve": "calcular o saldo de horas da sua equipe e dizer quem fez hora extra e quem precisa compensar",
-        "contexto": (
-            "**O que eu faço:** comparo a escala com o ponto de cada funcionário e calculo o saldo de horas da semana.\n\n"
-            "**O que eu preciso:** uma planilha .xlsx com as abas *escala* e *ponto*.\n\n"
-            "**O que você recebe:** o saldo de cada pessoa, um relatório pronto para ler e um arquivo Excel para guardar."
-        ),
-    },
-    "financeiro": {
-        "nome": "Financeiro", "cor": "#178A5A", "tinta": "#E6F5EE", "ativo": True,
-        "serve": "conferir se o que você vendeu no cartão e no PIX caiu certo no banco",
-        "contexto": (
-            "**O que eu faço:** cruzo as vendas do sistema com o extrato do banco, desconto a taxa do cartão "
-            "e aponto cada pagamento que não bateu.\n\n"
-            "**O que eu preciso:** as vendas do sistema e o extrato do banco, em .csv ou .xlsx.\n\n"
-            "**O que você recebe:** as divergências com o valor, as contas pagas no período e um relatório pronto."
-        ),
-    },
-    "compras": {
-        "nome": "Compras", "cor": "#C77A0A", "tinta": "#FCF1DF", "ativo": False,
-        "serve": "montar a lista de compras a partir do estoque e dos pedidos",
-        "contexto": (
-            "**Em produção.** Em breve vou olhar o estoque e os pedidos da semana e montar a lista do que comprar."
-        ),
-    },
-    "marketing": {
-        "nome": "Marketing", "cor": "#D6336C", "tinta": "#FCE8EF", "ativo": False,
-        "serve": "criar e agendar os posts do seu Instagram",
-        "contexto": (
-            "**Em produção.** Em breve vou buscar os assuntos do dia, criar os posts e agendar no Instagram "
-            "depois da sua aprovação."
-        ),
-    },
-}
-
-
-def robo(chave, tamanho=64):
-    return (
-        f'<svg width="{tamanho}" height="{tamanho}" viewBox="0 0 64 64" fill="none" stroke="currentColor" '
-        f'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-        f'{ROBOS[chave]}</svg>'
-    )
-
-
-# ---------- estilo ----------
 ESTILO = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=Courier+Prime:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
-    --fundo: #F7F8FA; --cartao: #FFFFFF; --linha: #E3E6EC;
-    --texto: #1C1E24; --mudo: #646B78; --acento: #1C1E24;
+    --bg: #0A0B0D; --painel: #111215; --linha: #23262B;
+    --texto: #E9E9E6; --mudo: #8A8F98; --acento: #D4FF3A; --alerta: #FF5A36;
     --curva: cubic-bezier(0.22, 1, 0.36, 1);
 }
-.stApp { background: var(--fundo); color: var(--texto); }
-.stApp, .stApp p, .stApp label, .stApp li, .stMarkdown, button, input, textarea {
-    font-family: 'Instrument Sans', sans-serif;
+
+.stApp { background: var(--bg); color: var(--texto); }
+.stApp, .stApp p, .stApp label, .stMarkdown, button, input, textarea {
+    font-family: 'Space Grotesk', sans-serif;
 }
 #MainMenu, footer { visibility: hidden; }
 [data-testid="stHeader"] { background: transparent; }
-.block-container { padding-top: 1.6rem; max-width: 1120px; }
-h1, h2, h3 { font-family: 'Bricolage Grotesque', sans-serif !important; color: var(--texto); }
+.block-container { padding-top: 1.6rem; max-width: 1180px; }
 
-/* ---------- abertura (fade in) ---------- */
-@keyframes surgir { from { opacity: 0; } to { opacity: 1; } }
-@keyframes surgir-subindo { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.abertura { text-align: center; padding: 22vh 0 2.4rem 0; }
-.abertura .marca {
-    font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; color: var(--texto);
-    font-size: clamp(3rem, 9vw, 6.5rem); letter-spacing: -.035em; line-height: 1;
-    animation: surgir 1.6s ease-out both;
+/* ---------- entradas (opacidade + subida suave) ---------- */
+@keyframes entrada {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
 }
-.abertura .marca span { color: #5B5BD6; }
-.abertura .robos {
-    display: flex; justify-content: center; gap: 18px; margin-top: 2rem;
-    animation: surgir-subindo 1.2s var(--curva) .7s both;
+@keyframes entrada-mob {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
 }
-.abertura .robos div { width: 44px; height: 44px; }
-.st-key-btn_ok { width: 100% !important; animation: surgir 1s ease-out 1.3s both; }
-.st-key-btn_ok .stButton, .st-key-btn_ok .stButton > div { display: block !important; width: 100% !important; }
-.st-key-btn_ok button { width: 200px !important; margin: 0 auto !important; display: flex !important; padding: .8rem 0 !important; }
-.st-key-btn_ok button p { font-size: 1.1rem; letter-spacing: .02em; }
-[class*="st-key-caixa_pedido"] .titulo-secao { margin-top: 0; }
-[class*="st-key-caixa_pedido"] [data-testid="stForm"] { padding: 0; }
-.saudacao svg { flex: 0 0 auto; }
+.hero-grupo { animation: entrada .8s var(--curva) both; }
+[class*="st-key-rev_"] { animation: entrada 1s var(--curva) .1s both; }
+@media (max-width: 640px) {
+    .hero-grupo { animation-name: entrada-mob; }
+    [class*="st-key-rev_"] { animation-name: entrada-mob; }
+}
 
-/* ---------- login ---------- */
-.st-key-caixa_login {
-    max-width: 420px; margin: 12vh auto 0 auto; background: var(--cartao);
-    border: 1px solid var(--linha); border-radius: 22px; padding: 30px 30px 18px 30px;
-    box-shadow: 0 20px 50px -30px rgba(28, 30, 36, .35);
-    animation: surgir .8s ease-out both;
+/* ---------- topo ---------- */
+.topbar {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 24px; border-bottom: 1px solid var(--linha);
+    padding: 1rem 0 28px 0;
 }
-.login-titulo { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 1.9rem; margin: 0; }
-.login-sub { color: var(--mudo); margin: .3rem 0 1.2rem 0; }
-.dica { color: var(--mudo); font-size: .9rem; margin-top: .4rem; }
+.marca {
+    font-size: clamp(2.8rem, 6.2vw, 5.4rem); font-weight: 500;
+    letter-spacing: -.045em; line-height: .98; color: var(--texto);
+}
+.marca em { font-style: normal; color: var(--acento); }
+.status {
+    display: inline-flex; align-items: center; white-space: nowrap; margin-top: .7rem;
+    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
+}
+.dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--acento); margin-right: 8px; animation: pulso 2s infinite;
+}
+@keyframes pulso { 50% { opacity: .2; } }
+.sub {
+    font-family: 'JetBrains Mono', monospace; font-size: .82rem;
+    color: var(--mudo); max-width: 560px; line-height: 1.6; margin: 1.4rem 0 2rem 0;
+}
+@media (max-width: 640px) {
+    .topbar { flex-direction: column; }
+    .marca { font-size: 2.6rem; }
+}
 
-/* ---------- cabeçalho fixo ---------- */
-.marca-topo { line-height: 1.05; }
-.marca-topo .nome {
-    font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 1.7rem;
-    letter-spacing: -.03em; color: var(--texto);
+/* ---------- rótulo de seção ---------- */
+.rotulo {
+    display: flex; gap: 14px; border-top: 1px solid var(--linha);
+    padding-top: 10px; margin: 2.2rem 0 1rem 0;
+    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
 }
-.marca-topo .nome span { color: var(--acento); }
-.marca-topo .com { color: var(--mudo); font-size: 1rem; padding-left: 2px; }
-.marca-topo .com strong { color: var(--texto); font-weight: 600; }
-.st-key-topo { border-bottom: 1px solid var(--linha); padding-bottom: 14px; margin-bottom: 1.6rem; }
-.st-key-topo [data-testid="stHorizontalBlock"] { align-items: center; }
+.rotulo span { color: var(--acento); }
 
-/* ---------- cartões dos agentes ---------- */
-.st-key-card_rh { --cor: #5B5BD6; }
-.st-key-card_financeiro { --cor: #178A5A; }
-.st-key-card_compras { --cor: #C77A0A; }
-.st-key-card_marketing { --cor: #D6336C; }
-[class*="st-key-card_"] {
-    position: relative; background: var(--cartao); border: 2px solid var(--cor);
-    border-radius: 24px; padding: 22px 20px; min-height: 196px;
-    box-shadow: 7px 7px 0 var(--cor);
-    transition: transform .18s var(--curva), box-shadow .18s var(--curva);
+/* ---------- abas ---------- */
+.stTabs [data-baseweb="tab-list"] { gap: 30px; border-bottom: 1px solid var(--linha); }
+.stTabs [data-baseweb="tab"] { background: transparent; height: auto; padding: 0 0 12px 0; }
+.stTabs [data-baseweb="tab"] p {
+    font-family: 'JetBrains Mono', monospace; font-size: .8rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
 }
-[class*="st-key-card_"]:hover { transform: translate(-2px, -2px); box-shadow: 9px 9px 0 var(--cor); }
-[class*="st-key-card_"]:active { transform: translate(4px, 4px); box-shadow: 3px 3px 0 var(--cor); }
-[class*="st-key-card_"]:has(button:focus-visible) { outline: 3px solid var(--texto); outline-offset: 4px; }
-.cartao-robo { color: var(--cor); }
-.cartao-nome {
-    font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 1.55rem;
-    color: var(--texto); margin-top: .7rem;
-}
-.cartao-serve { color: var(--mudo); font-size: .92rem; line-height: 1.4; margin-top: .2rem; }
-[class*="st-key-abrir_"] { position: absolute !important; inset: 0; z-index: 3; margin: 0 !important; }
-[class*="st-key-abrir_"] div, [class*="st-key-abrir_"] button {
-    width: 100% !important; height: 100% !important; min-height: 100% !important;
-}
-[class*="st-key-abrir_"] button { opacity: 0; cursor: pointer; }
-.st-key-card_compras, .st-key-card_marketing { background: #FBFBFC; }
-.st-key-card_compras:hover, .st-key-card_marketing:hover { transform: none; box-shadow: 7px 7px 0 var(--cor); }
-.st-key-card_compras .cartao-robo, .st-key-card_marketing .cartao-robo { opacity: .55; }
-.selo-producao {
-    display: inline-block; margin-top: .7rem; font-size: .78rem; font-weight: 600;
-    color: var(--cor); background: color-mix(in srgb, var(--cor) 12%, white);
-    padding: .18rem .6rem; border-radius: 999px;
-}
-[data-testid="stPopover"] { margin-top: 18px; }
-[data-testid="stPopover"] button { border-radius: 999px; border: 1px solid var(--linha); background: var(--cartao); }
+.stTabs [aria-selected="true"] p { color: var(--acento); }
+.stTabs [data-baseweb="tab-highlight"] { background: var(--acento); height: 2px; }
+.stTabs [data-baseweb="tab-border"] { background: var(--linha); }
 
-/* ---------- pedido ---------- */
-[class*="st-key-caixa_pedido"] {
-    background: var(--cartao); border: 1px solid var(--linha); border-radius: 22px;
-    padding: 22px 24px; margin-top: 2.6rem;
-}
-[class*="st-key-caixa_pedido"] textarea { border-radius: 14px; }
-.resposta {
-    display: flex; gap: 14px; align-items: flex-start; margin-top: 1rem;
-    background: color-mix(in srgb, var(--cor) 7%, white); border-radius: 18px; padding: 16px 18px;
-}
-.resposta .cartao-robo { flex: 0 0 auto; }
-
-/* ---------- botões ---------- */
-.stButton > button, [data-testid="stDownloadButton"] > button, [data-testid="stFormSubmitButton"] > button {
-    border-radius: 999px; padding: .6rem 1.4rem; border: 1px solid var(--linha); background: var(--cartao);
-    transition: transform .15s var(--curva), background-color .15s var(--curva);
-}
-.stButton > button:active, [data-testid="stFormSubmitButton"] > button:active { transform: scale(.97); }
-button[data-testid="stBaseButton-primary"], button[data-testid="stBaseButton-primaryFormSubmit"] {
-    background: var(--acento); border-color: var(--acento); color: #fff;
-}
-button[data-testid="stBaseButton-primary"] p, button[data-testid="stBaseButton-primaryFormSubmit"] p { color: #fff; font-weight: 600; }
-button[data-testid="stBaseButton-primary"]:hover, button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
-    background: color-mix(in srgb, var(--acento) 85%, black); border-color: transparent; color: #fff;
-}
-button:focus-visible { outline: 3px solid var(--acento) !important; outline-offset: 3px; }
-
-/* ---------- seção do agente ---------- */
-.saudacao {
-    display: flex; gap: 18px; align-items: center; background: var(--cartao);
-    border: 2px solid var(--acento); border-radius: 24px; padding: 20px 24px;
-    box-shadow: 7px 7px 0 var(--acento); margin: .4rem 0 1.4rem 0; color: var(--acento);
-    animation: surgir .6s ease-out both;
-}
-.saudacao p { color: var(--texto); font-size: 1.15rem; line-height: 1.5; margin: 0; }
-.saudacao strong { font-family: 'Bricolage Grotesque', sans-serif; }
-.titulo-secao {
-    font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 1.35rem;
-    color: var(--texto); margin: 2.2rem 0 .8rem 0;
-}
-.titulo-secao small {
-    display: block; font-family: 'Instrument Sans', sans-serif; font-weight: 400;
-    font-size: .92rem; color: var(--mudo); margin-top: .2rem;
-}
-[data-testid="stFileUploader"] section {
-    border: 1.5px dashed color-mix(in srgb, var(--acento) 45%, white); border-radius: 16px; background: var(--cartao);
-}
+/* ---------- números ---------- */
 [data-testid="stMetric"] {
-    background: var(--cartao); border-radius: 18px; padding: 16px 18px;
-    border: 1px solid var(--linha); border-top: 4px solid var(--acento);
+    background: var(--painel); border: 1px solid var(--linha);
+    border-radius: 2px; padding: 18px 20px;
 }
-[data-testid="stMetricLabel"] p { color: var(--mudo); }
-[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {
-    font-family: 'Bricolage Grotesque', sans-serif !important; font-weight: 700; color: var(--texto);
+[data-testid="stMetricLabel"] p {
+    font-family: 'JetBrains Mono', monospace; font-size: .7rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--mudo);
 }
-[data-testid="stExpander"] details { border: 1px solid var(--linha); border-radius: 16px; background: var(--cartao); }
-[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
+[data-testid="stMetricValue"] {
+    font-family: 'JetBrains Mono', monospace; font-weight: 500;
+    font-size: 1.9rem; letter-spacing: -.03em;
+}
+[data-testid="stMetricDelta"] { font-family: 'JetBrains Mono', monospace; color: var(--mudo); }
 
-/* ---------- comanda (relatório da IA) ---------- */
-@keyframes imprimir {
-    from { clip-path: inset(0 0 100% 0); transform: translateY(-14px); }
-    to { clip-path: inset(0 0 -20px 0); transform: none; }
+/* ---------- botões (feedback: hover 1.01, clique 0.99) ---------- */
+.stButton > button, [data-testid="stDownloadButton"] > button {
+    border-radius: 2px; border: 1px solid var(--texto); background: transparent;
+    padding: .75rem 1.5rem;
+    transition: transform .25s var(--curva), border-color .25s var(--curva), background-color .25s var(--curva);
 }
-[class*="st-key-ticket_"] {
-    position: relative; max-width: 620px; margin: 2.4rem 0 2.2rem 0;
-    background: #FFFEFA; color: var(--texto); padding: 26px 30px 34px 30px;
-    border-top: 5px solid var(--acento);
-    box-shadow: 0 18px 40px -22px rgba(28, 30, 36, .45);
-    animation: imprimir 1.1s var(--curva) both;
+.stButton > button p, [data-testid="stDownloadButton"] > button p {
+    font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--texto);
 }
-[class*="st-key-ticket_"]::after {
-    content: ""; position: absolute; left: 0; right: 0; bottom: -10px; height: 10px;
-    background:
-        linear-gradient(135deg, #FFFEFA 5px, transparent 0) 0 0 / 14px 10px repeat-x,
-        linear-gradient(225deg, #FFFEFA 5px, transparent 0) 0 0 / 14px 10px repeat-x;
+.stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
+    transform: scale(1.01); border-color: var(--acento);
 }
-[class*="st-key-ticket_"] p, [class*="st-key-ticket_"] li,
-[class*="st-key-ticket_"] strong, [class*="st-key-ticket_"] span {
-    font-family: 'Courier Prime', monospace; color: var(--texto); font-size: .98rem; line-height: 1.6;
+.stButton > button:hover p, [data-testid="stDownloadButton"] > button:hover p { color: var(--acento); }
+.stButton > button:active, [data-testid="stDownloadButton"] > button:active {
+    transform: scale(.99); transition-duration: .1s;
 }
-[class*="st-key-ticket_"] h1, [class*="st-key-ticket_"] h2, [class*="st-key-ticket_"] h3, [class*="st-key-ticket_"] h4 {
-    font-family: 'Courier Prime', monospace !important; font-size: 1.05rem; padding: .6rem 0 .2rem 0;
+button[data-testid="stBaseButton-primary"] { background: var(--acento); border: 1px solid var(--acento); }
+button[data-testid="stBaseButton-primary"] p { color: #0A0B0D; font-weight: 700; }
+button[data-testid="stBaseButton-primary"]:hover { background: #E6FF7A; border-color: #E6FF7A; }
+button[data-testid="stBaseButton-primary"]:hover p { color: #0A0B0D; }
+
+/* ---------- upload, tabelas, expanders ---------- */
+[data-testid="stFileUploader"] section {
+    border: 1px dashed #3A3E46; border-radius: 2px; background: var(--painel);
 }
-.ticket-topo {
-    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
-    border-bottom: 2px dashed #CFCAB9; padding-bottom: 12px; margin-bottom: 6px;
+[data-testid="stFileUploader"] section:hover { border-color: var(--acento); }
+[data-testid="stFileUploader"] label p, [data-testid="stNumberInput"] label p {
+    font-family: 'JetBrains Mono', monospace; font-size: .72rem;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--mudo);
 }
-.ticket-topo strong { font-size: 1.15rem !important; }
+[data-testid="stDataFrame"] { border: 1px solid var(--linha); border-radius: 2px; }
+[data-testid="stExpander"] {
+    border: 1px solid var(--linha); border-radius: 2px; background: var(--painel);
+}
+[data-testid="stExpander"] summary p {
+    font-family: 'JetBrains Mono', monospace; font-size: .76rem;
+    letter-spacing: .1em; text-transform: uppercase;
+}
+[data-baseweb="input"], [data-baseweb="base-input"] { border-radius: 2px; }
+
+/* ---------- relatório da IA (painel) ---------- */
+[class*="st-key-rev_"][class*="_relatorio"] {
+    background: var(--painel); border: 1px solid var(--linha);
+    border-left: 2px solid var(--acento); border-radius: 2px; padding: 22px 26px;
+    margin-top: 2.2rem;
+}
+[class*="st-key-rev_"][class*="_relatorio"] .rotulo {
+    border-top: none; padding-top: 0; margin: 0 0 .4rem 0;
+}
 
 /* ---------- avisos ---------- */
-.aviso { margin: 1.2rem 0; padding: 12px 16px; border-radius: 14px; font-weight: 600; }
-.aviso.alerta { color: #9B2C1F; background: #FDECEA; }
-.aviso.ok { color: #15603F; background: #E6F5EE; }
-
-@media (max-width: 720px) {
-    .abertura { padding-top: 16vh; }
-    [class*="st-key-card_"] { min-height: 0; }
+.aviso {
+    display: flex; align-items: center; gap: 12px; margin: 1rem 0;
+    padding: 12px 16px; border: 1px solid; border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace; font-size: .78rem; letter-spacing: .12em;
 }
+.aviso::before { content: ""; width: 8px; height: 8px; background: currentColor; }
+.aviso.alerta { color: var(--alerta); border-color: var(--alerta); }
+.aviso.ok { color: var(--acento); border-color: var(--acento); }
+
+/* ---------- movimento reduzido: sem subida, sem escala, sem pulso ---------- */
 @media (prefers-reduced-motion: reduce) {
-    .abertura .marca, .abertura .robos, .st-key-btn_ok, .st-key-caixa_login, .saudacao,
-    [class*="st-key-ticket_"] { animation: none; }
-    [class*="st-key-card_"], .stButton > button { transition: none; }
-    [class*="st-key-card_"]:hover, [class*="st-key-card_"]:active { transform: none; }
+    .hero-grupo, [class*="st-key-rev_"] { animation: none; }
+    .dot { animation: none; }
+    .stButton > button, [data-testid="stDownloadButton"] > button { transition: none; }
+    .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover,
+    .stButton > button:active, [data-testid="stDownloadButton"] > button:active { transform: none; }
 }
 </style>
 """
 st.markdown(ESTILO, unsafe_allow_html=True)
 
 CFG = {
-    "funcionario": "Funcionário", "saldo": "Saldo", "situacao": "Situação",
-    "data": "Data", "entrada": "Entrada", "saida": "Saída",
-    "forma": "Forma", "status": "Status", "descricao": "Descrição",
-    "esperado": st.column_config.NumberColumn("Esperado", format="R$ %.2f"),
-    "recebido": st.column_config.NumberColumn("Recebido", format="R$ %.2f"),
-    "diferenca": st.column_config.NumberColumn("Diferença", format="R$ %.2f"),
-    "valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
+    "funcionario": "FUNCIONÁRIO", "saldo": "SALDO", "situacao": "SITUAÇÃO",
+    "data": "DATA", "entrada": "ENTRADA", "saida": "SAÍDA",
+    "forma": "FORMA", "status": "STATUS", "descricao": "DESCRIÇÃO",
+    "esperado": st.column_config.NumberColumn("ESPERADO", format="R$ %.2f"),
+    "recebido": st.column_config.NumberColumn("RECEBIDO", format="R$ %.2f"),
+    "diferenca": st.column_config.NumberColumn("DIFERENÇA", format="R$ %.2f"),
+    "valor": st.column_config.NumberColumn("VALOR", format="R$ %.2f"),
 }
 
 
 # ---------- funções comuns ----------
-def ir(tela, agente=None):
-    st.session_state["tela"] = tela
-    st.session_state["agente"] = agente
-    st.rerun()
-
-
-def titulo(texto, detalhe=""):
-    extra = f"<small>{detalhe}</small>" if detalhe else ""
-    st.markdown(f'<div class="titulo-secao">{texto}{extra}</div>', unsafe_allow_html=True)
-
-
-def comanda(nome, relatorio):
+def rotulo(numero, texto):
     st.markdown(
-        f'<div class="ticket-topo"><strong>{nome}</strong>'
-        f'<span>{datetime.now():%d/%m/%Y %H:%M}</span></div>',
+        f'<div class="rotulo"><span>{numero}</span>{texto}</div>',
         unsafe_allow_html=True,
     )
-    st.markdown(relatorio)
 
 
 def minutos(hora):
@@ -378,101 +244,12 @@ def perguntar_ia(pedido):
     return "A IA não respondeu. Tente de novo mais tarde."
 
 
-# ---------- login ----------
-def carregar_usuarios():
-    try:
-        return {k: dict(v) for k, v in st.secrets["usuarios"].items()}
-    except Exception:
-        return {}
-
-
-def conferir_login(usuario, senha):
-    usuarios = carregar_usuarios()
-    if not usuarios:
-        usuarios = {"demo": {"senha": "demo", "nome": "Ronaldo"}}
-    dados = usuarios.get(usuario.strip().lower())
-    if dados and hmac.compare_digest(str(dados.get("senha", "")), senha):
-        return dados.get("nome", usuario)
-    return None
-
-
-# ---------- pedido livre para um agente ----------
-def dados_do_agente(chave):
-    if chave == "rh" and "resultado_rh" in st.session_state:
-        total = st.session_state["resultado_rh"]["total"]
-        return "Saldo de horas da última planilha:\n" + total[["funcionario", "saldo", "situacao"]].to_string(index=False)
-    if chave == "financeiro" and "resultado_fin" in st.session_state:
-        r = st.session_state["resultado_fin"]
-        div = r["divergentes"].to_string(index=False) if len(r["divergentes"]) else "nenhuma"
-        return (
-            f"Última conferência: {len(r['conc'])} vendas conferidas.\nDivergências:\n{div}\n\n"
-            f"Contas pagas:\n{r['contas'].to_string(index=False)}"
-        )
-    return "Ainda não há planilha enviada nesta sessão."
-
-
-def pedir_ao_agente(chave, pedido, nome_usuario):
-    ag = AGENTES[chave]
-    prompt = (
-        f"Você é o agente de {ag['nome']} do sistema hnos system A, usado por um restaurante. "
-        f"Você serve para {ag['serve']}. Responda em português, de forma curta e prática, "
-        f"falando com {nome_usuario}.\n\n"
-        f"O que você sabe fazer:\n{ag['contexto']}\n\n"
-        f"Dados disponíveis agora:\n{dados_do_agente(chave)}\n\n"
-        "Use apenas esses dados, sem inventar números. Se o pedido precisar de uma planilha que ainda "
-        f"não foi enviada, diga qual planilha enviar na seção de {ag['nome']}. Se o pedido estiver fora "
-        "do que você faz, diga isso com educação.\n\n"
-        f"Pedido: {pedido}"
-    )
-    return perguntar_ia(prompt)
-
-
-def caixa_de_pedido(nome_usuario, fixo=None):
-    ativos = [k for k, a in AGENTES.items() if a["ativo"]]
-    with st.container(key=f"caixa_pedido_{fixo or 'painel'}"):
-        if fixo:
-            titulo(f"Peça algo ao agente de {AGENTES[fixo]['nome']}")
-            chave = fixo
-        else:
-            titulo("Peça algo", "Escreva o que precisa e marque o agente que vai fazer. Compras e Marketing chegam em breve.")
-        with st.form(key=f"form_pedido_{fixo or 'painel'}", clear_on_submit=False, border=False):
-            pedido = st.text_area(
-                "Seu pedido",
-                placeholder=(
-                    "Ex.: quanto deixou de cair no banco esta semana?" if fixo == "financeiro"
-                    else "Ex.: quem precisa compensar horas esta semana?"
-                ),
-                key=f"texto_pedido_{fixo or 'painel'}",
-            )
-            if not fixo:
-                chave = st.radio(
-                    "Agente", ativos, horizontal=True,
-                    format_func=lambda k: AGENTES[k]["nome"], key="agente_pedido",
-                )
-            enviar = st.form_submit_button("Pedir ao agente", type="primary")
-        if enviar:
-            if not pedido.strip():
-                st.warning("Escreva o pedido antes de enviar.")
-            else:
-                with st.spinner(f"O agente de {AGENTES[chave]['nome']} está trabalhando..."):
-                    resposta = pedir_ao_agente(chave, pedido, nome_usuario)
-                st.session_state[f"resposta_{fixo or 'painel'}"] = (chave, resposta)
-        if f"resposta_{fixo or 'painel'}" in st.session_state:
-            chave_r, resposta = st.session_state[f"resposta_{fixo or 'painel'}"]
-            cor = AGENTES[chave_r]["cor"]
-            st.markdown(
-                f'<div class="resposta" style="--cor:{cor}"><div class="cartao-robo" style="color:{cor}">'
-                f'{robo(chave_r, 40)}</div><div><strong>Agente de {AGENTES[chave_r]["nome"]}</strong></div></div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(resposta)
-
-
 # ---------- página do RH ----------
 def pagina_rh():
-    titulo("Envie a planilha do RH", "Um arquivo .xlsx com as abas escala e ponto.")
-    arq = st.file_uploader("Planilha do RH (.xlsx)", type=["xlsx"], key="upload_rh")
-    calcular = bool(arq) and st.button("Calcular horas", type="primary", key="btn_rh")
+    with st.container(key="rev_rh_entrada"):
+        rotulo("01", "Entrada de dados · planilha com as abas escala e ponto")
+        arq = st.file_uploader("Planilha do RH (.xlsx)", type=["xlsx"], key="upload_rh")
+        calcular = bool(arq) and st.button("Calcular horas", type="primary", key="btn_rh")
 
     if calcular:
         escala = padronizar_data(pd.read_excel(arq, sheet_name="escala"))
@@ -498,7 +275,7 @@ def pagina_rh():
             "situação dele for 'compensar'. Use apenas os números fornecidos, sem calcular "
             "nada.\n\n" + resumo
         )
-        with st.spinner("Escrevendo o relatório..."):
+        with st.spinner("Processando relatório..."):
             relatorio = perguntar_ia(pedido)
 
         st.session_state["resultado_rh"] = {
@@ -510,47 +287,52 @@ def pagina_rh():
         topo = r["total"].sort_values("saldo_min", ascending=False).iloc[0]
         extras = r["total"][r["total"]["saldo_min"] > 0]["saldo_min"].sum()
 
-        titulo("Resumo da semana")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Funcionários", len(r["total"]))
-        c2.metric("Horas extras no total", formatar(extras))
-        c3.metric("Maior saldo", topo["funcionario"], topo["saldo"], delta_color="off")
+        with st.container(key="rev_rh_resumo"):
+            rotulo("02", "Resumo")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Funcionários", len(r["total"]))
+            c2.metric("Horas extras no total", formatar(extras))
+            c3.metric("Maior saldo", topo["funcionario"], topo["saldo"], delta_color="off")
 
-        with st.container(key="ticket_rh"):
-            comanda("Relatório do RH", r["relatorio"])
-
-        titulo("Saldo por funcionário")
-        st.dataframe(
-            r["total"][["funcionario", "saldo", "situacao"]],
-            hide_index=True, column_config=CFG,
-        )
-
-        titulo("Detalhes e exportação")
-        with st.expander("Ver o saldo de cada dia"):
+        with st.container(key="rev_rh_tabela"):
+            rotulo("03", "Saldo por funcionário")
             st.dataframe(
-                r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
+                r["total"][["funcionario", "saldo", "situacao"]],
                 hide_index=True, column_config=CFG,
             )
-        st.download_button(
-            "Baixar relatório (.xlsx)",
-            para_excel({
-                "por_dia": r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
-                "total": r["total"][["funcionario", "saldo", "situacao"]],
-            }),
-            file_name="relatorio_rh.xlsx",
-        )
+
+        with st.container(key="rev_rh_relatorio"):
+            rotulo("04", "Relatório · IA")
+            st.markdown(r["relatorio"])
+
+        with st.container(key="rev_rh_export"):
+            rotulo("05", "Detalhes e exportação")
+            with st.expander("Detalhe por dia"):
+                st.dataframe(
+                    r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
+                    hide_index=True, column_config=CFG,
+                )
+            st.download_button(
+                "Baixar relatório (.xlsx)",
+                para_excel({
+                    "por_dia": r["dados"][["funcionario", "data", "entrada", "saida", "saldo"]],
+                    "total": r["total"][["funcionario", "saldo", "situacao"]],
+                }),
+                file_name="relatorio_rh.xlsx",
+            )
 
 
 # ---------- página do Financeiro ----------
 def pagina_financeiro():
-    titulo("Envie as vendas e o extrato", "Arquivos .csv ou .xlsx do sistema de vendas e do banco.")
-    col1, col2 = st.columns(2)
-    f_vendas = col1.file_uploader("Vendas do sistema", type=["csv", "xlsx"], key="upload_vendas")
-    f_extrato = col2.file_uploader("Extrato do banco", type=["csv", "xlsx"], key="upload_extrato")
-    taxa = st.number_input("Taxa do cartão (%)", value=2.0, step=0.1) / 100
-    conciliar = bool(f_vendas and f_extrato) and st.button(
-        "Conferir pagamentos", type="primary", key="btn_fin"
-    )
+    with st.container(key="rev_fin_entrada"):
+        rotulo("01", "Entrada de dados · vendas do sistema e extrato do banco")
+        col1, col2 = st.columns(2)
+        f_vendas = col1.file_uploader("Vendas do sistema", type=["csv", "xlsx"], key="upload_vendas")
+        f_extrato = col2.file_uploader("Extrato do banco", type=["csv", "xlsx"], key="upload_extrato")
+        taxa = st.number_input("Taxa do cartão (%)", value=2.0, step=0.1) / 100
+        conciliar = bool(f_vendas and f_extrato) and st.button(
+            "Conciliar", type="primary", key="btn_fin"
+        )
 
     if conciliar:
         vendas = padronizar_data(ler_arquivo(f_vendas))
@@ -589,7 +371,7 @@ def pagina_financeiro():
             "as divergências (e o valor) e liste as contas pagas. Use apenas os números "
             "fornecidos, sem calcular nada e sem inventar causas.\n\n" + resumo
         )
-        with st.spinner("Escrevendo o relatório..."):
+        with st.spinner("Processando relatório..."):
             relatorio = perguntar_ia(pedido)
 
         st.session_state["resultado_fin"] = {
@@ -601,145 +383,579 @@ def pagina_financeiro():
         r = st.session_state["resultado_fin"]
         n = len(r["divergentes"])
 
-        titulo("Resumo do período")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Vendas conferidas", len(r["conc"]))
-        c2.metric("Divergências", n)
-        c3.metric("Contas pagas", brl(abs(r["contas"]["valor"].sum())))
-        if n:
-            texto = "1 pagamento não bateu com o banco" if n == 1 else f"{n} pagamentos não bateram com o banco"
-            st.markdown(f'<div class="aviso alerta">{texto}. Veja quais abaixo.</div>', unsafe_allow_html=True)
-            st.dataframe(r["divergentes"], hide_index=True, column_config=CFG)
-        else:
-            st.markdown(
-                '<div class="aviso ok">Todos os pagamentos bateram com o banco.</div>',
-                unsafe_allow_html=True,
-            )
-
-        with st.container(key="ticket_fin"):
-            comanda("Relatório financeiro", r["relatorio"])
-
-        titulo("Detalhes e exportação")
-        with st.expander("Ver a conferência completa"):
-            st.dataframe(r["conc"], hide_index=True, column_config=CFG)
-        with st.expander("Ver as contas pagas no período"):
-            st.dataframe(r["contas"], hide_index=True, column_config=CFG)
-        st.download_button(
-            "Baixar relatório (.xlsx)",
-            para_excel({
-                "conciliacao": r["conc"],
-                "divergencias": r["divergentes"],
-                "contas_pagas": r["contas"],
-            }),
-            file_name="relatorio_financeiro.xlsx",
-        )
-
-
-# ---------- telas ----------
-def tela_abertura():
-    robos = "".join(f'<div style="color:{a["cor"]}">{robo(k, 44)}</div>' for k, a in AGENTES.items())
-    st.markdown(
-        f'<div class="abertura"><div class="marca">hnos system <span>A</span></div>'
-        f'<div class="robos">{robos}</div></div>',
-        unsafe_allow_html=True,
-    )
-    if st.button("OK", type="primary", key="btn_ok"):
-        ir("login")
-
-
-def tela_login():
-    with st.container(key="caixa_login"):
-        st.markdown(
-            '<p class="login-titulo">Entrar</p><p class="login-sub">Use o usuário e a senha do seu restaurante.</p>',
-            unsafe_allow_html=True,
-        )
-        with st.form("form_login", border=False):
-            usuario = st.text_input("Usuário")
-            senha = st.text_input("Senha", type="password")
-            entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
-        if entrar:
-            nome = conferir_login(usuario, senha)
-            if nome:
-                st.session_state["usuario"] = nome
-                ir("painel")
-            else:
-                st.error("Usuário ou senha incorretos. Confira e tente de novo.")
-        if not carregar_usuarios():
-            st.markdown(
-                '<p class="dica">Modo demonstração: usuário <strong>demo</strong>, senha <strong>demo</strong>.</p>',
-                unsafe_allow_html=True,
-            )
-
-
-def cabecalho(nome_usuario, cor=None):
-    if cor:
-        st.markdown(f"<style>:root {{ --acento: {cor}; }}</style>", unsafe_allow_html=True)
-    with st.container(key="topo"):
-        c1, c2 = st.columns([5, 1])
-        c1.markdown(
-            f'<div class="marca-topo"><div class="nome">hnos system <span>A</span></div>'
-            f'<div class="com">with <strong>{nome_usuario.lower()}</strong></div></div>',
-            unsafe_allow_html=True,
-        )
-        if c2.button("Sair", key="btn_sair"):
-            st.session_state.clear()
-            st.session_state["tela"] = "login"
-            st.rerun()
-
-
-def tela_painel(nome_usuario):
-    cabecalho(nome_usuario, "#5B5BD6")
-    colunas = st.columns(4, gap="large")
-    for col, (chave, ag) in zip(colunas, AGENTES.items()):
-        with col:
-            with st.container(key=f"card_{chave}"):
-                selo = "" if ag["ativo"] else '<span class="selo-producao">em produção</span>'
+        with st.container(key="rev_fin_resumo"):
+            rotulo("02", "Resumo")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Vendas conciliadas", len(r["conc"]))
+            c2.metric("Divergências", n)
+            c3.metric("Contas pagas", brl(abs(r["contas"]["valor"].sum())))
+            if n:
+                plural = "S" if n > 1 else ""
                 st.markdown(
-                    f'<div class="cartao-robo">{robo(chave, 58)}</div>'
-                    f'<div class="cartao-nome">{ag["nome"]}</div>{selo}',
+                    f'<div class="aviso alerta">{n} DIVERGÊNCIA{plural} ENCONTRADA{plural}</div>',
                     unsafe_allow_html=True,
                 )
-                if ag["ativo"] and st.button(f"Abrir {ag['nome']}", key=f"abrir_{chave}"):
-                    ir("agente", chave)
-            with st.popover("Contexto"):
-                st.markdown(f"**Agente de {ag['nome']}**")
-                st.markdown(ag["contexto"])
-    caixa_de_pedido(nome_usuario)
+                st.dataframe(r["divergentes"], hide_index=True, column_config=CFG)
+            else:
+                st.markdown(
+                    '<div class="aviso ok">TUDO CONFERIDO · NENHUMA DIVERGÊNCIA</div>',
+                    unsafe_allow_html=True,
+                )
+
+        with st.container(key="rev_fin_relatorio"):
+            rotulo("03", "Relatório · IA")
+            st.markdown(r["relatorio"])
+
+        with st.container(key="rev_fin_export"):
+            rotulo("04", "Detalhes e exportação")
+            with st.expander("Conciliação completa"):
+                st.dataframe(r["conc"], hide_index=True, column_config=CFG)
+            with st.expander("Contas pagas no período"):
+                st.dataframe(r["contas"], hide_index=True, column_config=CFG)
+            st.download_button(
+                "Baixar relatório (.xlsx)",
+                para_excel({
+                    "conciliacao": r["conc"],
+                    "divergencias": r["divergentes"],
+                    "contas_pagas": r["contas"],
+                }),
+                file_name="relatorio_financeiro.xlsx",
+            )
 
 
-def tela_agente(nome_usuario, chave):
-    ag = AGENTES[chave]
-    cabecalho(nome_usuario, ag["cor"])
-    st.markdown(
-        f"<style>.stApp {{ background: linear-gradient(180deg, {ag['tinta']} 0, var(--fundo) 520px); }}</style>",
-        unsafe_allow_html=True,
+# ---------- página de Compras ----------
+CFG.update({
+    "item": "ITEM", "unidade": "UNIDADE", "quantidade": "QUANTIDADE",
+    "fornecedor": "FORNECEDOR", "prazo_dias": "PRAZO (DIAS)", "motivo": "CRITÉRIO",
+    "preco_unitario": st.column_config.NumberColumn("PREÇO UNIT.", format="R$ %.2f"),
+    "total": st.column_config.NumberColumn("TOTAL", format="R$ %.2f"),
+})
+
+ESTILO_COMPRAS = """
+<style>
+[data-testid="stLinkButton"] a, a[data-testid^="stBaseLinkButton"] {
+    border-radius: 2px; border: 1px solid var(--acento); background: var(--acento);
+    padding: .75rem 1.5rem; text-decoration: none;
+    transition: transform .25s var(--curva), background-color .25s var(--curva);
+}
+[data-testid="stLinkButton"] a p, a[data-testid^="stBaseLinkButton"] p {
+    font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+    letter-spacing: .1em; text-transform: uppercase; color: #0A0B0D; font-weight: 700;
+}
+[data-testid="stLinkButton"] a:hover, a[data-testid^="stBaseLinkButton"]:hover {
+    transform: scale(1.01); background: #E6FF7A; border-color: #E6FF7A;
+}
+[data-testid="stLinkButton"] a:active, a[data-testid^="stBaseLinkButton"]:active {
+    transform: scale(.99);
+}
+[data-testid="stCode"] { border: 1px solid var(--linha); border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) {
+    [data-testid="stLinkButton"] a, a[data-testid^="stBaseLinkButton"] { transition: none; }
+    [data-testid="stLinkButton"] a:hover, a[data-testid^="stBaseLinkButton"]:hover,
+    [data-testid="stLinkButton"] a:active, a[data-testid^="stBaseLinkButton"]:active { transform: none; }
+}
+</style>
+"""
+
+
+def modelo_compras():
+    estoque = pd.DataFrame(
+        [
+            ("Tomate", "kg", 4, 10, 30),
+            ("Filé de frango", "kg", 18, 15, 40),
+            ("Queijo mussarela", "kg", 6, 8, 25),
+            ("Farinha de trigo", "kg", 12, 20, 60),
+            ("Óleo de soja", "L", 9, 10, 30),
+            ("Cerveja long neck", "un", 120, 100, 400),
+            ("Refrigerante lata", "un", 35, 80, 300),
+            ("Limão", "kg", 3, 5, 15),
+        ],
+        columns=["item", "unidade", "qtd_atual", "qtd_minima", "qtd_ideal"],
     )
-    if st.button("Voltar ao painel", key="btn_voltar"):
-        ir("painel")
-    st.markdown(
-        f'<div class="saudacao">{robo(chave, 64)}<p>Olá, eu sou seu <strong>agente de {ag["nome"]}</strong>. '
-        f'Sirvo para {ag["serve"]}. Do que você precisa hoje, {nome_usuario}?</p></div>',
-        unsafe_allow_html=True,
+    cotacoes = pd.DataFrame(
+        [
+            ("Tomate", "Hortifruti Central", 6.80, 1),
+            ("Tomate", "Atacado Sul", 6.20, 4),
+            ("Tomate", "Distribuidora Bom Preço", 7.10, 2),
+            ("Queijo mussarela", "Hortifruti Central", 41.00, 1),
+            ("Queijo mussarela", "Atacado Sul", 38.50, 3),
+            ("Queijo mussarela", "Distribuidora Bom Preço", 36.90, 5),
+            ("Farinha de trigo", "Hortifruti Central", 5.00, 1),
+            ("Farinha de trigo", "Atacado Sul", 4.30, 3),
+            ("Farinha de trigo", "Distribuidora Bom Preço", 4.10, 6),
+            ("Óleo de soja", "Hortifruti Central", 8.50, 1),
+            ("Óleo de soja", "Atacado Sul", 7.90, 3),
+            ("Óleo de soja", "Distribuidora Bom Preço", 7.40, 4),
+            ("Refrigerante lata", "Bebidas Express", 2.60, 1),
+            ("Refrigerante lata", "Atacado Sul", 2.45, 4),
+            ("Refrigerante lata", "Distribuidora Bom Preço", 2.35, 7),
+            ("Limão", "Hortifruti Central", 5.50, 1),
+            ("Limão", "Atacado Sul", 4.80, 4),
+            ("Limão", "Distribuidora Bom Preço", 5.20, 2),
+            ("Filé de frango", "Atacado Sul", 18.90, 3),
+            ("Filé de frango", "Distribuidora Bom Preço", 17.80, 4),
+            ("Cerveja long neck", "Bebidas Express", 4.20, 1),
+            ("Cerveja long neck", "Atacado Sul", 3.95, 3),
+        ],
+        columns=["item", "fornecedor", "preco_unitario", "prazo_dias"],
     )
-    if chave == "rh":
-        pagina_rh()
-    elif chave == "financeiro":
-        pagina_financeiro()
-    caixa_de_pedido(nome_usuario, fixo=chave)
+    fornecedores = pd.DataFrame(
+        [
+            ("Hortifruti Central", "5511900000001"),
+            ("Atacado Sul", "5511900000002"),
+            ("Distribuidora Bom Preço", "5511900000003"),
+            ("Bebidas Express", "5511900000004"),
+        ],
+        columns=["fornecedor", "whatsapp"],
+    )
+    return {"estoque": estoque, "cotacoes": cotacoes, "fornecedores": fornecedores}
 
 
-# ---------- montagem ----------
-tela = st.session_state.get("tela", "abertura")
-usuario = st.session_state.get("usuario")
+def escolher_fornecedor(cot, prazo_max):
+    dentro = cot[cot["prazo_dias"] <= prazo_max]
+    if len(dentro):
+        return dentro.sort_values(["preco_unitario", "prazo_dias"]).iloc[0], "menor preço no prazo"
+    return cot.sort_values(["prazo_dias", "preco_unitario"]).iloc[0], "ninguém no prazo: mais rápido"
 
-if tela in ("painel", "agente") and not usuario:
-    tela = "login"
 
-if tela == "abertura":
-    tela_abertura()
-elif tela == "login":
-    tela_login()
-elif tela == "agente" and AGENTES.get(st.session_state.get("agente"), {}).get("ativo"):
-    tela_agente(usuario, st.session_state["agente"])
-else:
-    tela_painel(usuario)
+def calcular_compras(estoque, cotacoes, prazo_max):
+    precisa = estoque[estoque["qtd_atual"] <= estoque["qtd_minima"]]
+    linhas, sem_cotacao = [], []
+    for _, it in precisa.iterrows():
+        cot = cotacoes[cotacoes["item"] == it["item"]]
+        if cot.empty:
+            sem_cotacao.append(str(it["item"]))
+            continue
+        esc, motivo = escolher_fornecedor(cot, prazo_max)
+        qtd = float(it["qtd_ideal"] - it["qtd_atual"])
+        preco = float(esc["preco_unitario"])
+        linhas.append({
+            "item": it["item"], "unidade": it["unidade"], "quantidade": qtd,
+            "fornecedor": esc["fornecedor"], "preco_unitario": preco,
+            "prazo_dias": int(esc["prazo_dias"]),
+            "total": round(qtd * preco, 2),
+            "economia": round(qtd * (float(cot["preco_unitario"].max()) - preco), 2),
+            "motivo": motivo,
+        })
+    return pd.DataFrame(linhas), sem_cotacao
+
+
+def montar_mensagem(fornecedor, itens):
+    linhas = [
+        f"- {l['quantidade']:g} {l['unidade']} de {l['item']} "
+        f"({brl(l['preco_unitario'])} por {l['unidade']})"
+        for _, l in itens.iterrows()
+    ]
+    return (
+        f"Olá, {fornecedor}! Gostaria de fazer o seguinte pedido:\n\n"
+        + "\n".join(linhas)
+        + f"\n\nTotal estimado: {brl(itens['total'].sum())}\n"
+        + "Pode confirmar disponibilidade e prazo de entrega? Obrigado!"
+    )
+
+
+def pagina_compras():
+    from urllib.parse import quote
+
+    with st.container(key="rev_cmp_entrada"):
+        rotulo("01", "Entrada de dados · planilha com as abas estoque, cotacoes e fornecedores")
+        st.download_button(
+            "Baixar planilha modelo", para_excel(modelo_compras()),
+            file_name="modelo_compras.xlsx",
+        )
+        arq = st.file_uploader("Planilha de compras (.xlsx)", type=["xlsx"], key="upload_compras")
+        prazo_max = st.number_input("Prazo máximo de entrega (dias)", value=3, min_value=1, step=1)
+        gerar = bool(arq) and st.button("Gerar pedidos", type="primary", key="btn_cmp")
+
+    if gerar:
+        try:
+            estoque = pd.read_excel(arq, sheet_name="estoque")
+            cotacoes = pd.read_excel(arq, sheet_name="cotacoes")
+            fornecedores = pd.read_excel(arq, sheet_name="fornecedores")
+            pedidos, sem_cotacao = calcular_compras(estoque, cotacoes, prazo_max)
+        except (ValueError, KeyError):
+            st.session_state.pop("resultado_cmp", None)
+            st.markdown(
+                '<div class="aviso alerta">PLANILHA FORA DO PADRÃO · BAIXE O MODELO</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            relatorio = ""
+            if len(pedidos):
+                colunas_ia = ["item", "quantidade", "unidade", "fornecedor",
+                              "preco_unitario", "prazo_dias", "total"]
+                resumo = (
+                    f"Itens a comprar:\n{pedidos[colunas_ia].to_string(index=False)}\n\n"
+                    f"Total geral: {brl(pedidos['total'].sum())}\n"
+                    f"Economia em relação à cotação mais cara: {brl(pedidos['economia'].sum())}\n"
+                    f"Itens sem cotação: {', '.join(sem_cotacao) if sem_cotacao else 'nenhum'}\n"
+                    f"Prazo máximo: {prazo_max} dias"
+                )
+                pedido_ia = (
+                    "Você é assistente de compras de um restaurante. Com base nos dados "
+                    "abaixo, escreva um relatório curto em português para o gerente: o que "
+                    "precisa ser comprado, de quais fornecedores, o total e a economia. "
+                    "Use apenas os números fornecidos, sem calcular nada e sem inventar "
+                    "nada.\n\n" + resumo
+                )
+                with st.spinner("Processando relatório..."):
+                    relatorio = perguntar_ia(pedido_ia)
+
+            tels = {
+                str(f): "".join(c for c in str(w) if c.isdigit())
+                for f, w in zip(fornecedores["fornecedor"], fornecedores["whatsapp"])
+            }
+            st.session_state["resultado_cmp"] = {
+                "pedidos": pedidos, "sem_cotacao": sem_cotacao,
+                "relatorio": relatorio, "tels": tels,
+            }
+
+    if "resultado_cmp" not in st.session_state:
+        return
+
+    r = st.session_state["resultado_cmp"]
+    pedidos = r["pedidos"]
+
+    if r["sem_cotacao"]:
+        nomes = ", ".join(r["sem_cotacao"]).upper()
+        st.markdown(
+            f'<div class="aviso alerta">SEM COTAÇÃO: {nomes}</div>',
+            unsafe_allow_html=True,
+        )
+    if pedidos.empty:
+        if not r["sem_cotacao"]:
+            st.markdown(
+                '<div class="aviso ok">ESTOQUE EM DIA · NADA PARA COMPRAR</div>',
+                unsafe_allow_html=True,
+            )
+        return
+
+    with st.container(key="rev_cmp_resumo"):
+        rotulo("02", "Resumo")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Itens a comprar", len(pedidos))
+        c2.metric("Fornecedores", pedidos["fornecedor"].nunique())
+        c3.metric("Total do pedido", brl(pedidos["total"].sum()))
+        c4.metric("Economia", brl(pedidos["economia"].sum()))
+
+    with st.container(key="rev_cmp_lista"):
+        rotulo("03", "Melhor opção por item")
+        st.dataframe(
+            pedidos[["item", "quantidade", "unidade", "fornecedor",
+                     "preco_unitario", "prazo_dias", "total", "motivo"]],
+            hide_index=True, column_config=CFG,
+        )
+
+    with st.container(key="rev_cmp_relatorio"):
+        rotulo("04", "Relatório · IA")
+        st.markdown(r["relatorio"])
+
+    with st.container(key="rev_cmp_envio"):
+        rotulo("05", "Pedidos por fornecedor · revise antes de enviar")
+        for forn, itens in pedidos.groupby("fornecedor"):
+            with st.expander(f"{forn} · {brl(itens['total'].sum())}", expanded=True):
+                st.dataframe(
+                    itens[["item", "quantidade", "unidade", "preco_unitario", "prazo_dias", "total"]],
+                    hide_index=True, column_config=CFG,
+                )
+                msg = montar_mensagem(forn, itens)
+                st.code(msg, language=None)
+                numero = r["tels"].get(str(forn), "")
+                if numero:
+                    st.link_button(
+                        "Abrir no WhatsApp", f"https://wa.me/{numero}?text={quote(msg)}"
+                    )
+                else:
+                    st.caption("Sem WhatsApp cadastrado para este fornecedor.")
+
+    with st.container(key="rev_cmp_export"):
+        rotulo("06", "Exportação")
+        por_fornecedor = pedidos.groupby("fornecedor")["total"].sum().reset_index()
+        st.download_button(
+            "Baixar pedidos (.xlsx)",
+            para_excel({
+                "pedidos": pedidos.drop(columns=["economia"]),
+                "por_fornecedor": por_fornecedor,
+            }),
+            file_name="pedidos_compras.xlsx",
+        )
+
+# ---------- página de Compras ----------
+CFG.update({
+    "item": "ITEM", "unidade": "UNIDADE", "quantidade": "QUANTIDADE",
+    "fornecedor": "FORNECEDOR", "prazo_dias": "PRAZO (DIAS)", "motivo": "CRITÉRIO",
+    "preco_unitario": st.column_config.NumberColumn("PREÇO UNIT.", format="R$ %.2f"),
+    "total": st.column_config.NumberColumn("TOTAL", format="R$ %.2f"),
+})
+
+ESTILO_COMPRAS = """
+<style>
+[data-testid="stLinkButton"] a, a[data-testid^="stBaseLinkButton"] {
+    border-radius: 2px; border: 1px solid var(--acento); background: var(--acento);
+    padding: .75rem 1.5rem; text-decoration: none;
+    transition: transform .25s var(--curva), background-color .25s var(--curva);
+}
+[data-testid="stLinkButton"] a p, a[data-testid^="stBaseLinkButton"] p {
+    font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+    letter-spacing: .1em; text-transform: uppercase; color: #0A0B0D; font-weight: 700;
+}
+[data-testid="stLinkButton"] a:hover, a[data-testid^="stBaseLinkButton"]:hover {
+    transform: scale(1.01); background: #E6FF7A; border-color: #E6FF7A;
+}
+[data-testid="stLinkButton"] a:active, a[data-testid^="stBaseLinkButton"]:active {
+    transform: scale(.99);
+}
+[data-testid="stCode"] { border: 1px solid var(--linha); border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) {
+    [data-testid="stLinkButton"] a, a[data-testid^="stBaseLinkButton"] { transition: none; }
+    [data-testid="stLinkButton"] a:hover, a[data-testid^="stBaseLinkButton"]:hover,
+    [data-testid="stLinkButton"] a:active, a[data-testid^="stBaseLinkButton"]:active { transform: none; }
+}
+</style>
+"""
+
+
+def modelo_compras():
+    estoque = pd.DataFrame(
+        [
+            ("Tomate", "kg", 4, 10, 30),
+            ("Filé de frango", "kg", 18, 15, 40),
+            ("Queijo mussarela", "kg", 6, 8, 25),
+            ("Farinha de trigo", "kg", 12, 20, 60),
+            ("Óleo de soja", "L", 9, 10, 30),
+            ("Cerveja long neck", "un", 120, 100, 400),
+            ("Refrigerante lata", "un", 35, 80, 300),
+            ("Limão", "kg", 3, 5, 15),
+        ],
+        columns=["item", "unidade", "qtd_atual", "qtd_minima", "qtd_ideal"],
+    )
+    cotacoes = pd.DataFrame(
+        [
+            ("Tomate", "Hortifruti Central", 6.80, 1),
+            ("Tomate", "Atacado Sul", 6.20, 4),
+            ("Tomate", "Distribuidora Bom Preço", 7.10, 2),
+            ("Queijo mussarela", "Hortifruti Central", 41.00, 1),
+            ("Queijo mussarela", "Atacado Sul", 38.50, 3),
+            ("Queijo mussarela", "Distribuidora Bom Preço", 36.90, 5),
+            ("Farinha de trigo", "Hortifruti Central", 5.00, 1),
+            ("Farinha de trigo", "Atacado Sul", 4.30, 3),
+            ("Farinha de trigo", "Distribuidora Bom Preço", 4.10, 6),
+            ("Óleo de soja", "Hortifruti Central", 8.50, 1),
+            ("Óleo de soja", "Atacado Sul", 7.90, 3),
+            ("Óleo de soja", "Distribuidora Bom Preço", 7.40, 4),
+            ("Refrigerante lata", "Bebidas Express", 2.60, 1),
+            ("Refrigerante lata", "Atacado Sul", 2.45, 4),
+            ("Refrigerante lata", "Distribuidora Bom Preço", 2.35, 7),
+            ("Limão", "Hortifruti Central", 5.50, 1),
+            ("Limão", "Atacado Sul", 4.80, 4),
+            ("Limão", "Distribuidora Bom Preço", 5.20, 2),
+            ("Filé de frango", "Atacado Sul", 18.90, 3),
+            ("Filé de frango", "Distribuidora Bom Preço", 17.80, 4),
+            ("Cerveja long neck", "Bebidas Express", 4.20, 1),
+            ("Cerveja long neck", "Atacado Sul", 3.95, 3),
+        ],
+        columns=["item", "fornecedor", "preco_unitario", "prazo_dias"],
+    )
+    fornecedores = pd.DataFrame(
+        [
+            ("Hortifruti Central", "5511900000001"),
+            ("Atacado Sul", "5511900000002"),
+            ("Distribuidora Bom Preço", "5511900000003"),
+            ("Bebidas Express", "5511900000004"),
+        ],
+        columns=["fornecedor", "whatsapp"],
+    )
+    return {"estoque": estoque, "cotacoes": cotacoes, "fornecedores": fornecedores}
+
+
+def escolher_fornecedor(cot, prazo_max):
+    dentro = cot[cot["prazo_dias"] <= prazo_max]
+    if len(dentro):
+        return dentro.sort_values(["preco_unitario", "prazo_dias"]).iloc[0], "menor preço no prazo"
+    return cot.sort_values(["prazo_dias", "preco_unitario"]).iloc[0], "ninguém no prazo: mais rápido"
+
+
+def calcular_compras(estoque, cotacoes, prazo_max):
+    precisa = estoque[estoque["qtd_atual"] <= estoque["qtd_minima"]]
+    linhas, sem_cotacao = [], []
+    for _, it in precisa.iterrows():
+        cot = cotacoes[cotacoes["item"] == it["item"]]
+        if cot.empty:
+            sem_cotacao.append(str(it["item"]))
+            continue
+        esc, motivo = escolher_fornecedor(cot, prazo_max)
+        qtd = float(it["qtd_ideal"] - it["qtd_atual"])
+        preco = float(esc["preco_unitario"])
+        linhas.append({
+            "item": it["item"], "unidade": it["unidade"], "quantidade": qtd,
+            "fornecedor": esc["fornecedor"], "preco_unitario": preco,
+            "prazo_dias": int(esc["prazo_dias"]),
+            "total": round(qtd * preco, 2),
+            "economia": round(qtd * (float(cot["preco_unitario"].max()) - preco), 2),
+            "motivo": motivo,
+        })
+    return pd.DataFrame(linhas), sem_cotacao
+
+
+def montar_mensagem(fornecedor, itens):
+    linhas = [
+        f"- {l['quantidade']:g} {l['unidade']} de {l['item']} "
+        f"({brl(l['preco_unitario'])} por {l['unidade']})"
+        for _, l in itens.iterrows()
+    ]
+    return (
+        f"Olá, {fornecedor}! Gostaria de fazer o seguinte pedido:\n\n"
+        + "\n".join(linhas)
+        + f"\n\nTotal estimado: {brl(itens['total'].sum())}\n"
+        + "Pode confirmar disponibilidade e prazo de entrega? Obrigado!"
+    )
+
+
+def pagina_compras():
+    from urllib.parse import quote
+
+    with st.container(key="rev_cmp_entrada"):
+        rotulo("01", "Entrada de dados · planilha com as abas estoque, cotacoes e fornecedores")
+        st.download_button(
+            "Baixar planilha modelo", para_excel(modelo_compras()),
+            file_name="modelo_compras.xlsx",
+        )
+        arq = st.file_uploader("Planilha de compras (.xlsx)", type=["xlsx"], key="upload_compras")
+        prazo_max = st.number_input("Prazo máximo de entrega (dias)", value=3, min_value=1, step=1)
+        gerar = bool(arq) and st.button("Gerar pedidos", type="primary", key="btn_cmp")
+
+    if gerar:
+        try:
+            estoque = pd.read_excel(arq, sheet_name="estoque")
+            cotacoes = pd.read_excel(arq, sheet_name="cotacoes")
+            fornecedores = pd.read_excel(arq, sheet_name="fornecedores")
+            pedidos, sem_cotacao = calcular_compras(estoque, cotacoes, prazo_max)
+        except (ValueError, KeyError):
+            st.session_state.pop("resultado_cmp", None)
+            st.markdown(
+                '<div class="aviso alerta">PLANILHA FORA DO PADRÃO · BAIXE O MODELO</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            relatorio = ""
+            if len(pedidos):
+                colunas_ia = ["item", "quantidade", "unidade", "fornecedor",
+                              "preco_unitario", "prazo_dias", "total"]
+                resumo = (
+                    f"Itens a comprar:\n{pedidos[colunas_ia].to_string(index=False)}\n\n"
+                    f"Total geral: {brl(pedidos['total'].sum())}\n"
+                    f"Economia em relação à cotação mais cara: {brl(pedidos['economia'].sum())}\n"
+                    f"Itens sem cotação: {', '.join(sem_cotacao) if sem_cotacao else 'nenhum'}\n"
+                    f"Prazo máximo: {prazo_max} dias"
+                )
+                pedido_ia = (
+                    "Você é assistente de compras de um restaurante. Com base nos dados "
+                    "abaixo, escreva um relatório curto em português para o gerente: o que "
+                    "precisa ser comprado, de quais fornecedores, o total e a economia. "
+                    "Use apenas os números fornecidos, sem calcular nada e sem inventar "
+                    "nada.\n\n" + resumo
+                )
+                with st.spinner("Processando relatório..."):
+                    relatorio = perguntar_ia(pedido_ia)
+
+            tels = {
+                str(f): "".join(c for c in str(w) if c.isdigit())
+                for f, w in zip(fornecedores["fornecedor"], fornecedores["whatsapp"])
+            }
+            st.session_state["resultado_cmp"] = {
+                "pedidos": pedidos, "sem_cotacao": sem_cotacao,
+                "relatorio": relatorio, "tels": tels,
+            }
+
+    if "resultado_cmp" not in st.session_state:
+        return
+
+    r = st.session_state["resultado_cmp"]
+    pedidos = r["pedidos"]
+
+    if r["sem_cotacao"]:
+        nomes = ", ".join(r["sem_cotacao"]).upper()
+        st.markdown(
+            f'<div class="aviso alerta">SEM COTAÇÃO: {nomes}</div>',
+            unsafe_allow_html=True,
+        )
+    if pedidos.empty:
+        if not r["sem_cotacao"]:
+            st.markdown(
+                '<div class="aviso ok">ESTOQUE EM DIA · NADA PARA COMPRAR</div>',
+                unsafe_allow_html=True,
+            )
+        return
+
+    with st.container(key="rev_cmp_resumo"):
+        rotulo("02", "Resumo")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Itens a comprar", len(pedidos))
+        c2.metric("Fornecedores", pedidos["fornecedor"].nunique())
+        c3.metric("Total do pedido", brl(pedidos["total"].sum()))
+        c4.metric("Economia", brl(pedidos["economia"].sum()))
+
+    with st.container(key="rev_cmp_lista"):
+        rotulo("03", "Melhor opção por item")
+        st.dataframe(
+            pedidos[["item", "quantidade", "unidade", "fornecedor",
+                     "preco_unitario", "prazo_dias", "total", "motivo"]],
+            hide_index=True, column_config=CFG,
+        )
+
+    with st.container(key="rev_cmp_relatorio"):
+        rotulo("04", "Relatório · IA")
+        st.markdown(r["relatorio"])
+
+    with st.container(key="rev_cmp_envio"):
+        rotulo("05", "Pedidos por fornecedor · revise antes de enviar")
+        for forn, itens in pedidos.groupby("fornecedor"):
+            with st.expander(f"{forn} · {brl(itens['total'].sum())}", expanded=True):
+                st.dataframe(
+                    itens[["item", "quantidade", "unidade", "preco_unitario", "prazo_dias", "total"]],
+                    hide_index=True, column_config=CFG,
+                )
+                msg = montar_mensagem(forn, itens)
+                st.code(msg, language=None)
+                numero = r["tels"].get(str(forn), "")
+                if numero:
+                    st.link_button(
+                        "Abrir no WhatsApp", f"https://wa.me/{numero}?text={quote(msg)}"
+                    )
+                else:
+                    st.caption("Sem WhatsApp cadastrado para este fornecedor.")
+
+    with st.container(key="rev_cmp_export"):
+        rotulo("06", "Exportação")
+        por_fornecedor = pedidos.groupby("fornecedor")["total"].sum().reset_index()
+        st.download_button(
+            "Baixar pedidos (.xlsx)",
+            para_excel({
+                "pedidos": pedidos.drop(columns=["economia"]),
+                "por_fornecedor": por_fornecedor,
+            }),
+            file_name="pedidos_compras.xlsx",
+        )
+
+
+# ---------- montagem do site ----------
+st.markdown(ESTILO_COMPRAS, unsafe_allow_html=True)
+st.markdown(
+    '<div class="hero-grupo">'
+    '<div class="topbar">'
+    '<div class="marca">Painel operacional<br><em>de agentes</em></div>'
+    '<span class="status"><i class="dot"></i>3 AGENTES ATIVOS</span>'
+    '</div>'
+    '<div class="sub">RH, financeiro e compras em um só lugar. Envie as planilhas, '
+    'receba o cálculo e o relatório.</div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
+
+aba_rh, aba_fin, aba_cmp = st.tabs(["RH", "Financeiro", "Compras"])
+with aba_rh:
+    pagina_rh()
+with aba_fin:
+    pagina_financeiro()
+with aba_cmp:
+    pagina_compras()
