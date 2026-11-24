@@ -295,6 +295,10 @@ def caixa_de_pedido(nome_usuario, fixo=None):
 
 # ---------- página do RH ----------
 def pagina_rh():
+    from rh_ponto import painel
+    painel()
+    st.divider()
+
     titulo("Envie a planilha do RH", "Um arquivo .xlsx com as abas escala e ponto.")
     arq = st.file_uploader("Planilha do RH (.xlsx)", type=["xlsx"], key="upload_rh")
     calcular = bool(arq) and st.button("Calcular horas", type="primary", key="btn_rh")
