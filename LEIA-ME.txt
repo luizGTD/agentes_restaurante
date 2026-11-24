@@ -1,0 +1,4 @@
+Copie app.py, rh_ponto.py e requirements.txt para publicar. Execute streamlit run app.py.
+Banco SQLite: HNOS_DB pode apontar para um caminho persistente. Não publique o banco no GitHub.
+Configure SMTP_USER, SMTP_PASSWORD (senha de aplicativo), RH_EMAIL, SMTP_HOST e SMTP_PORT como variáveis de ambiente privadas no servidor.
+Agende python rh_ponto.py diariamente, por exemplo às 08h, no mesmo servidor e com o mesmo HNOS_DB. Envia segunda-feira e dia 1, referentes ao período anterior. Não depende de abrir a interface. Streamlit Community Cloud não garante armazenamento persistente nem execução agendada; use servidor persistente com agendador para produção. O protótipo é para um restaurante, com registro manual por gerente, não é um relógio de ponto certificado.
