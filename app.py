@@ -6,6 +6,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 from google import genai
+import marketing
 
 st.set_page_config(page_title="hnos system A", page_icon="🤖", layout="wide")
 
@@ -73,11 +74,15 @@ AGENTES = {
         ),
     },
     "marketing": {
-        "nome": "Marketing", "cor": "#D6336C", "tinta": "#FCE8EF", "ativo": False,
-        "serve": "criar e agendar os posts do seu Instagram",
+        "nome": "Marketing", "cor": "#D6336C", "tinta": "#FCE8EF", "ativo": True,
+        "serve": "ver o que está em alta no seu nicho e criar os posts do seu Instagram",
         "contexto": (
-            "**Em produção.** Em breve vou buscar os assuntos do dia, criar os posts e agendar no Instagram "
-            "depois da sua aprovação."
+            "**O que eu faço:** pesquiso no Google o que está em alta no seu nicho e crio post ou carrossel "
+            "com legenda e hashtags.\n\n"
+            "**O que eu preciso:** o assunto do post e os fatos (prato, dia, preço). A foto pode ser sua ou "
+            "gerada com IA, e você aprova antes.\n\n"
+            "**O que você recebe:** as imagens prontas para o Instagram e a legenda para copiar. "
+            "O agendamento automático chega com o Metricool."
         ),
     },
 }
@@ -106,7 +111,7 @@ h1,h2,h3,.marca,.cartao-nome,.titulo-secao,.login-titulo{font-family:'Space Grot
 .st-key-topo{border-bottom:1px solid #ffffff18;padding-bottom:14px;margin-bottom:1rem}.marca-topo .nome{font:700 24px 'Space Grotesk',sans-serif;letter-spacing:-1px}.marca-topo .nome span,.marca span{color:#b4aaff}.marca-topo .com{font-size:12px;color:var(--mudo)}
 .hero{position:relative;overflow:hidden;isolation:isolate;min-height:270px;border:1px solid #ffffff20;border-radius:32px;padding:38px;display:flex;align-items:center;background:linear-gradient(115deg,#192239b0,#15182e80);animation:enter .65s both}.hero-copy{position:relative;z-index:2;max-width:65%}.eyebrow{font-size:11px;letter-spacing:.22em;color:#b9b4ff;font-weight:800;text-transform:uppercase}.hero h1{font-size:clamp(32px,5vw,62px);line-height:1.04;letter-spacing:-.055em;margin:14px 0}.hero p{color:var(--mudo);max-width:490px;font-size:15px}.orb-stage{position:absolute;right:5%;top:50%;width:220px;height:220px;transform:translateY(-50%);perspective:650px;pointer-events:none}.orb{position:absolute;inset:36px;border-radius:50%;background:radial-gradient(circle at 32% 25%,#fff 0%,#b8c6ff 12%,#8174e8 34%,#353568 65%,#11142d 83%);box-shadow:inset -14px -18px 30px #080b24,0 0 65px #8878ff66;animation:float 6s ease-in-out infinite}.ring{position:absolute;inset:8px;border:1px solid #c6c9ff90;border-radius:50%;transform:rotateX(65deg) rotateZ(-25deg);box-shadow:0 0 15px #b6aaff44}.ring.r2{transform:rotateY(65deg) rotateZ(40deg)}.ring.r3{inset:0;transform:rotateX(40deg) rotateY(-45deg)}.orbit-dot{position:absolute;inset:0;animation:orbit 12s linear infinite}.orbit-dot:before{content:'';position:absolute;top:5px;left:50%;width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:0 0 18px #a8baff}
 .st-key-nav{background:#ffffff08;border:1px solid #ffffff1c;border-radius:22px;padding:10px;backdrop-filter:blur(24px);margin:10px 0 20px}.stButton>button,[data-testid=stFormSubmitButton]>button,[data-testid=stDownloadButton]>button,[data-testid=stLinkButton] a{border:1px solid #ffffff30!important;border-radius:16px!important;background:linear-gradient(145deg,#ffffff20,#ffffff07)!important;box-shadow:inset 0 1px 1px #ffffff38,0 8px 20px #0003!important;backdrop-filter:blur(20px) saturate(160%);color:#edf2ff!important;transition:transform .22s var(--curva),box-shadow .22s,border-color .22s!important;min-height:44px}.stButton>button:hover,[data-testid=stFormSubmitButton]>button:hover,[data-testid=stDownloadButton]>button:hover,[data-testid=stLinkButton] a:hover{transform:translateY(-3px);border-color:#c5baff!important;box-shadow:inset 0 1px 1px #ffffff70,0 8px 30px #a597ff40!important}.stButton>button:active{transform:scale(.97)}button[data-testid*=primary],button[data-testid*=Primary]{background:linear-gradient(135deg,#6654b9,#343b76)!important;border-color:#a69bff!important}button:focus-visible{outline:2px solid #d0c8ff!important;outline-offset:3px}
-.st-key-card_rh{--cor:#a89cff}.st-key-card_financeiro{--cor:#69e5b5}.st-key-card_compras{--cor:#ffc37c}.st-key-card_marketing{--cor:#f3a2d4}[class*=st-key-card_]{border:1px solid #ffffff20;border-radius:26px;padding:22px;background:linear-gradient(145deg,#ffffff10,#ffffff03);box-shadow:0 18px 40px #0003,inset 0 1px 0 #ffffff18;transition:transform .3s var(--curva),border-color .3s;animation:enter .7s both;min-height:310px}[class*=st-key-card_]:hover{transform:perspective(900px) rotateX(3deg) translateY(-6px);border-color:var(--cor)}.cartao-robo{display:inline-flex;color:var(--cor);filter:drop-shadow(0 8px 14px var(--cor));padding:10px;border-radius:20px;background:#ffffff0b}.cartao-nome{font-size:25px;font-weight:700;margin:12px 0 4px}.cartao-serve{font-size:13px;color:var(--mudo);min-height:88px}.selo-producao{font-size:11px;color:var(--mudo);letter-spacing:.08em}.st-key-card_marketing{opacity:.85}[class*=st-key-card_] [data-testid=stButton] button:disabled{opacity:.65;cursor:not-allowed;transform:none!important}[class*=st-key-card_] .cartao-serve{height:88px;overflow-wrap:anywhere}@media(max-width:900px){[class*=st-key-card_] .cartao-serve{height:auto;min-height:110px}}@media(max-width:640px){[class*=st-key-card_] .cartao-serve{min-height:88px}}
+.st-key-card_rh{--cor:#a89cff}.st-key-card_financeiro{--cor:#69e5b5}.st-key-card_compras{--cor:#ffc37c}.st-key-card_marketing{--cor:#f3a2d4}[class*=st-key-card_]{border:1px solid #ffffff20;border-radius:26px;padding:22px;background:linear-gradient(145deg,#ffffff10,#ffffff03);box-shadow:0 18px 40px #0003,inset 0 1px 0 #ffffff18;transition:transform .3s var(--curva),border-color .3s;animation:enter .7s both;min-height:310px}[class*=st-key-card_]:hover{transform:perspective(900px) rotateX(3deg) translateY(-6px);border-color:var(--cor)}.cartao-robo{display:inline-flex;color:var(--cor);filter:drop-shadow(0 8px 14px var(--cor));padding:10px;border-radius:20px;background:#ffffff0b}.cartao-nome{font-size:25px;font-weight:700;margin:12px 0 4px}.cartao-serve{font-size:13px;color:var(--mudo);min-height:88px}.selo-producao{font-size:11px;color:var(--mudo);letter-spacing:.08em}[class*=st-key-mkt_]{background:#ffffff06;border:1px solid #ffffff16;border-radius:24px;padding:22px;margin-top:18px;animation:enter .6s both}[class*=st-key-card_] [data-testid=stButton] button:disabled{opacity:.65;cursor:not-allowed;transform:none!important}[class*=st-key-card_] .cartao-serve{height:88px;overflow-wrap:anywhere}@media(max-width:900px){[class*=st-key-card_] .cartao-serve{height:auto;min-height:110px}}@media(max-width:640px){[class*=st-key-card_] .cartao-serve{min-height:88px}}
 .abertura{text-align:center;padding:12vh 0 2rem;animation:enter .8s both}.abertura .marca{font-size:clamp(42px,8vw,90px);font-weight:700;letter-spacing:-.07em}.abertura .orb-stage{position:relative;right:auto;top:auto;transform:none;margin:0 auto 30px}.abertura .robos{display:flex;justify-content:center;gap:24px;margin-top:24px}.st-key-btn_ok{max-width:240px;margin:auto}.st-key-caixa_login{max-width:440px;margin:9vh auto;padding:32px;border:1px solid #ffffff25;border-radius:30px;background:#151d30aa;backdrop-filter:blur(24px);animation:enter .6s both}.login-titulo{font-size:32px;font-weight:700}.login-sub,.dica{color:var(--mudo)!important;font-size:13px}
 .saudacao{display:flex;align-items:center;gap:22px;padding:26px;border:1px solid #ffffff22;border-radius:26px;background:linear-gradient(135deg,#ffffff12,#ffffff04);color:var(--acento);animation:enter .6s both}.saudacao svg{flex:none;filter:drop-shadow(0 8px 14px var(--acento))}.saudacao p{margin:0}.titulo-secao{font-size:23px;font-weight:700;margin:30px 0 12px;letter-spacing:-.025em}.titulo-secao small{display:block;color:var(--mudo);font:400 13px Manrope,sans-serif;margin-top:5px}[class*=st-key-caixa_pedido],[class*=st-key-rev_cmp_]{background:#ffffff06;border:1px solid #ffffff16;border-radius:24px;padding:22px;margin-top:18px;animation:enter .6s both}[data-testid=stMetric]{border:1px solid #ffffff20;border-radius:20px;padding:18px;background:#ffffff09}[data-testid=stMetricValue]{color:var(--texto);font-family:'Space Grotesk',sans-serif}[data-testid=stFileUploader] section,[data-testid=stExpander] details{background:#141b2b;border:1px solid #ffffff25;border-radius:16px;color:var(--texto)}[data-baseweb=input],[data-baseweb=textarea],[data-baseweb=select]>div{background:#141b2b!important;border-color:#ffffff25!important;color:var(--texto)!important}input,textarea{color:var(--texto)!important}[data-testid=stDataFrame]{border:1px solid #ffffff20;border-radius:14px;overflow:hidden}[class*=st-key-ticket_]{border:1px solid #ffffff20;border-left:3px solid var(--acento);background:#151d30;border-radius:22px;padding:24px;margin:24px 0;animation:enter .7s both}.ticket-topo{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #ffffff20;padding-bottom:12px;margin-bottom:12px}.ticket-topo span{color:var(--mudo);font-size:12px}.resposta{display:flex;align-items:center;gap:14px;padding:16px;background:#ffffff08;border-radius:18px;margin-top:16px}.aviso{padding:14px;border-radius:14px;margin:12px 0}.aviso.alerta{background:#512a35;color:#ffd0d7}.aviso.ok{background:#163c32;color:#a5f4d0}
 @media(max-width:700px){.hero{padding:24px;min-height:300px;align-items:flex-start}.hero-copy{max-width:100%}.hero .orb-stage{opacity:.35;right:-40px;top:75%;scale:.75}.block-container{padding-top:1rem}.saudacao{padding:16px}.st-key-nav{padding:5px}}
@@ -232,6 +237,8 @@ def dados_do_agente(chave):
             f"Última análise de compras:\n{resumo}\n"
             f"Itens sem cotação: {', '.join(r['sem_cotacao']) or 'nenhum'}"
         )
+    if chave == "marketing":
+        return marketing.resumo_para_ia() or "Ainda não há pesquisa nem post nesta sessão."
     return "Ainda não há planilha enviada nesta sessão."
 
 
@@ -258,7 +265,7 @@ def caixa_de_pedido(nome_usuario, fixo=None):
             titulo(f"Peça algo ao agente de {AGENTES[fixo]['nome']}")
             chave = fixo
         else:
-            titulo("Peça algo", "Escreva o que precisa e marque o agente que vai fazer. Marketing chega em breve.")
+            titulo("Peça algo", "Escreva o que precisa e marque o agente que vai fazer.")
         with st.form(key=f"form_pedido_{fixo or 'painel'}", clear_on_submit=False, border=False):
             pedido = st.text_area(
                 "Seu pedido",
@@ -761,8 +768,8 @@ def cabecalho(nome_usuario, cor=None):
 
 def navegacao(atual=None):
     with st.container(key="nav"):
-        cols = st.columns(4)
-        for col, (chave, nome) in zip(cols, [(None, "Visão geral"), ("rh", "RH"), ("financeiro", "Financeiro"), ("compras", "Compras")]):
+        cols = st.columns(5)
+        for col, (chave, nome) in zip(cols, [(None, "Visão geral"), ("rh", "RH"), ("financeiro", "Financeiro"), ("compras", "Compras"), ("marketing", "Marketing")]):
             if col.button(nome, key=f"nav_{chave}", type="primary" if atual == chave else "secondary", use_container_width=True):
                 ir("painel" if chave is None else "agente", chave)
 
@@ -804,6 +811,8 @@ def tela_agente(nome_usuario, chave):
         pagina_financeiro()
     elif chave == "compras":
         pagina_compras()
+    elif chave == "marketing":
+        marketing.pagina_marketing(titulo)
     caixa_de_pedido(nome_usuario, fixo=chave)
 
 
