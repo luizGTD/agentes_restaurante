@@ -12,7 +12,8 @@ from google import genai
 from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
 
-MODELOS_TEXTO = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+# mesma ordem do resto do app: os modelos lite têm mais cota grátis
+MODELOS_TEXTO = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"]
 MODELOS_IMAGEM = ["gemini-3-pro-image-preview", "gemini-2.5-flash-image"]
 LARGURA, ALTURA = 1080, 1350  # formato 4:5 do feed do Instagram
 
@@ -33,6 +34,24 @@ def _cliente():
     return genai.Client()
 
 
+class SemCota(RuntimeError):
+    """A chave do Gemini chegou no limite do plano."""
+
+
+def _sem_cota(erro):
+    texto = str(erro)
+    return "429" in texto or "RESOURCE_EXHAUSTED" in texto or "quota" in texto.lower()
+
+
+def _falha(ultimo, o_que="responder"):
+    if _sem_cota(ultimo):
+        return SemCota(
+            "A cota do Gemini acabou por agora. Espere alguns minutos e tente de novo. "
+            "Se acontecer sempre, ative o faturamento da chave no Google AI Studio."
+        )
+    return RuntimeError(f"A IA não conseguiu {o_que}. Tente de novo em instantes. ({str(ultimo)[:160]})")
+
+
 def _texto(prompt, config=None):
     cliente = _cliente()
     ultimo = None
@@ -41,7 +60,7 @@ def _texto(prompt, config=None):
             return cliente.models.generate_content(model=modelo, contents=prompt, config=config)
         except Exception as erro:  # tenta o próximo modelo
             ultimo = erro
-    raise RuntimeError(f"A IA não respondeu: {ultimo}")
+    raise _falha(ultimo)
 
 
 def pesquisar_em_alta(nicho, cidade):
@@ -53,7 +72,15 @@ def pesquisar_em_alta(nicho, cidade):
         "e uma ideia de post que esse restaurante pode fazer. Não invente números; se não tiver certeza, diga."
     )
     cfg = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
-    resp = _texto(prompt, cfg)
+    try:
+        resp = _texto(prompt, cfg)
+    except SemCota:
+        # a busca no Google tem cota própria; sem ela, o Gemini responde com o que já sabe
+        resp = _texto(prompt.replace("Pesquise no Google o que está em alta AGORA (últimos 30 dias)",
+                                     "Com base no que você sabe, diga o que costuma estar em alta"))
+        aviso = ("_Hoje a pesquisa ao vivo no Google atingiu o limite. Estas ideias vêm do que o Gemini já sabe, "
+                 "sem as notícias de hoje._\n\n")
+        return aviso + resp.text, []
     fontes = []
     try:
         for ch in resp.candidates[0].grounding_metadata.grounding_chunks or []:
@@ -102,7 +129,12 @@ def gerar_foto(prompt):
                 ultimo = "a IA não devolveu imagem"
             except Exception as erro:
                 ultimo = erro
-    raise RuntimeError(f"Não consegui gerar a foto: {ultimo}")
+    if _sem_cota(ultimo):
+        raise SemCota(
+            "A geração de fotos com IA não está liberada nessa chave do Gemini (ou a cota acabou). "
+            "Ela precisa do faturamento ativo no Google AI Studio. Enquanto isso, use 'Adicionar sua foto'."
+        )
+    raise _falha(ultimo, "gerar a foto")
 
 
 # ---------- montagem da imagem final ----------
