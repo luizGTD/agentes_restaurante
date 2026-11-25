@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 # mesma ordem do resto do app: os modelos lite têm mais cota grátis
 MODELOS_TEXTO = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"]
 MODELOS_IMAGEM = ["gemini-3-pro-image-preview", "gemini-2.5-flash-image"]
+GEMINI_FOTO = "https://gemini.google.com/app"  # onde o dono gera a foto quando a IA do app está sem cota
 LARGURA, ALTURA = 1080, 1350  # formato 4:5 do feed do Instagram
 
 REGRAS_TEXTO = """
@@ -258,7 +259,9 @@ def secao_criar(titulo, nicho):
                         for s in dados["slides"]:
                             s.update({"foto": None, "foto_ia": None, "final": None})
                         # limpa os campos do post anterior
-                        for k in [k for k in st.session_state if k.startswith(("mkt_tit_", "mkt_txt_", "mkt_pf_", "mkt_origem_", "mkt_up_"))]:
+                        for k in [k for k in st.session_state if k.startswith(("mkt_tit_", "mkt_txt_", "mkt_pf_", "mkt_origem_", "mkt_up_"))] + ["mkt_foto_indisponivel"]:
+                            if k not in st.session_state:
+                                continue
                             del st.session_state[k]
                         st.session_state["mkt_post"] = dados
                         st.session_state["mkt_atual"] = 0
@@ -323,8 +326,24 @@ def secao_slides(titulo):
                     try:
                         s["foto_ia"] = gerar_foto(s["prompt_foto"])
                         s["final"] = None
+                        st.session_state.pop("mkt_foto_indisponivel", None)
+                    except SemCota:
+                        st.session_state["mkt_foto_indisponivel"] = True
                     except Exception as erro:
                         _mostrar_erro(erro)
+            if st.session_state.get("mkt_foto_indisponivel"):
+                st.markdown(
+                    '<div class="aviso alerta">A foto com IA está indisponível aqui no momento. '
+                    "Copie o prompt abaixo, gere a foto no Gemini e depois envie a foto aqui.</div>",
+                    unsafe_allow_html=True,
+                )
+                st.code(s["prompt_foto"] or "Escreva ou gere o prompt da foto acima.", language=None, wrap_lines=True)
+                st.link_button("Abrir o Gemini para gerar a foto", GEMINI_FOTO, type="primary")
+                enviada = st.file_uploader("Enviar a foto que você gerou (.jpg ou .png)", type=["jpg", "jpeg", "png"],
+                                           key=f"mkt_up_ia_{atual}")
+                if enviada and enviada.getvalue() != s.get("foto_ia"):
+                    s["foto_ia"] = enviada.getvalue()
+                    s["final"] = None
             if s.get("foto_ia"):
                 st.image(s["foto_ia"], caption="Foto gerada", width=360)
                 if st.button("Aprovar esta foto", type="primary", key=f"mkt_aprovar_{atual}"):
