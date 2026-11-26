@@ -4,6 +4,7 @@ from html import escape
 from pathlib import Path
 
 import streamlit as st
+from marketing import pagina_marketing
 
 st.set_page_config(
     page_title="hnos | Gestão de restaurante",
@@ -490,6 +491,29 @@ st.html("""
     width: 100%;
   }
 }
+.stApp :is(
+  .st-key-mkt_alta,
+  .st-key-mkt_criar,
+  .st-key-mkt_slides,
+  .st-key-mkt_final
+) {
+  background: var(--painel);
+  border: 1px solid var(--borda);
+  border-radius: 16px;
+  padding: 1.2rem;
+}
+
+.stApp .marketing .icone-area {
+  background: #3c2543;
+  color: #f3bfeb;
+}
+
+.stApp .st-key-area_marketing [data-testid="stButton"] button {
+  --botao-fundo: #3c2543;
+  --botao-texto: #f3bfeb;
+  --botao-borda: #604065;
+  --botao-hover: #503054;
+}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet">
 """)
@@ -499,12 +523,14 @@ PAGINAS = {
     "rh": ("RH", "groups"),
     "financeiro": ("Financeiro", "account_balance_wallet"),
     "compras": ("Compras", "shopping_bag"),
+    "marketing": ("Marketing", "campaign"),
     "assistente": ("Assistente IA", "auto_awesome"),
 }
 DESCRICOES = {
     "rh": "Confira a escala e calcule horas extras e compensações.",
     "financeiro": "Concilie vendas, repasses e contas pagas.",
     "compras": "Compare cotações e organize pedidos por fornecedor.",
+    "marketing": "Pesquise tendências e crie posts e carrosséis para o Instagram.",
 }
 RESULTADOS = {
     "rh": "resultado_rh",
@@ -575,6 +601,17 @@ def menu(nome, atual):
 
 
 def resumo(chave):
+    if chave == "marketing":
+        post = st.session_state.get("mkt_post") or {}
+        slides = post.get("slides", [])
+
+        if not slides:
+            return "Instagram", "Novo post"
+
+        aprovados = sum(bool(slide.get("final")) for slide in slides)
+        status = "Pronto para baixar" if aprovados == len(slides) else "Em criação"
+        return status, f"{aprovados} de {len(slides)} slides aprovados"
+    
     resultado = st.session_state.get(RESULTADOS[chave])
     if resultado is None:
         return "Sem importação", "Aguardando dados"
@@ -600,7 +637,7 @@ def painel(nome):
     )
 
     st.subheader("Áreas de trabalho")
-    for coluna, chave in zip(st.columns(3), DESCRICOES):
+    for coluna, chave in zip(st.columns(len(DESCRICOES)), DESCRICOES):
         rotulo, icone = PAGINAS[chave]
         status, valor = resumo(chave)
         with coluna, st.container(key=f"area_{chave}"):
@@ -641,6 +678,11 @@ def painel(nome):
 
 
 def modulo(nome, pagina):
+    if pagina == "marketing":
+        st.title("Marketing")
+        pagina_marketing(sistema["titulo"])
+        return
+    
     rotulo, icone = PAGINAS[pagina]
     st.title(rotulo)
     st.write(DESCRICOES[pagina])
