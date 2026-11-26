@@ -19,19 +19,58 @@ def db():
         c.commit()
     finally: c.close()
 
-def relatorio(inicio, fim):
+def relatorio(inicio, fim, *, incluir_id=False):
     with db() as c:
-        d = pd.read_sql_query('SELECT f.nome AS funcionario,p.entrada,p.saida,p.jornada,p.intervalo FROM ponto p JOIN funcionarios f ON f.id=p.funcionario WHERE substr(p.entrada,1,10) BETWEEN ? AND ? ORDER BY p.entrada', c, params=(str(inicio),str(fim)))
-    d['trabalhado_min'] = [
-    int((pd.to_datetime(s) - pd.to_datetime(e)).total_seconds() // 60)
-    - (int(i) if pd.notna(i) else 0)
-    if pd.notna(s) and pd.notna(e) and s != "" and e != ""
-    else None
-    for e, s, i in zip(d.entrada, d.saida, d.intervalo)
-    ]
-    d['saldo_min'] = d.trabalhado_min-d.jornada
-    t = d[d.saida.notna()].groupby('funcionario',as_index=False)[['trabalhado_min','saldo_min']].sum()
-    return d,t
+        d = pd.read_sql_query(
+            """SELECT p.id AS registro_id, f.nome AS funcionario,
+                      p.entrada, p.saida, p.jornada, p.intervalo
+               FROM ponto p
+               JOIN funcionarios f ON f.id = p.funcionario
+               WHERE substr(p.entrada, 1, 10) BETWEEN ? AND ?
+               ORDER BY p.entrada, p.id""",
+            c,
+            params=(str(inicio), str(fim)),
+        )
+
+    d["trabalhado_min"] = pd.array(
+        [
+            int((pd.to_datetime(saida) - pd.to_datetime(entrada)).total_seconds() // 60)
+            - (int(intervalo) if pd.notna(intervalo) else 0)
+            if pd.notna(saida) and pd.notna(entrada) and saida != "" and entrada != ""
+            else None
+            for entrada, saida, intervalo in zip(d.entrada, d.saida, d.intervalo)
+        ],
+        dtype="Int64",
+    )
+    d["saldo_min"] = d["trabalhado_min"] - d["jornada"]
+    totais = (
+        d[d.saida.notna()]
+        .groupby("funcionario", as_index=False)[["trabalhado_min", "saldo_min"]]
+        .sum()
+    )
+    if not incluir_id:
+        d = d.drop(columns="registro_id")
+    return d, totais
+
+
+def excluir_registro_ponto(registro):
+    saida = registro["saida"] if pd.notna(registro["saida"]) else None
+    with db() as c:
+        cursor = c.execute(
+            """DELETE FROM ponto
+               WHERE id = ?
+                 AND funcionario = (SELECT id FROM funcionarios WHERE nome = ?)
+                 AND entrada = ? AND saida IS ? AND jornada = ? AND intervalo = ?""",
+            (
+                int(registro["registro_id"]),
+                registro["funcionario"],
+                registro["entrada"],
+                saida,
+                int(registro["jornada"]),
+                int(registro["intervalo"]),
+            ),
+        )
+        return cursor.rowcount == 1
 
 def excel(d,t):
     b=io.BytesIO()
@@ -100,10 +139,57 @@ def painel():
     if tipo=='Personalizado':
         a=st.date_input('Início',a); b=st.date_input('Fim',b)
     if a>b: st.error('Período inválido.'); return
-    d,t=relatorio(a,b)
-    st.dataframe(t,hide_index=True); st.dataframe(d,hide_index=True)
-    st.caption('Saldo em minutos por turno encerrado; não inclui faltas, feriados ou regras de convenção coletiva.')
-    st.download_button('Baixar relatório de ponto',excel(d,t),'ponto_rh.xlsx',key='rh_ponto_download')
+    from hashlib import sha256
+
+    if st.session_state.pop("rh_ponto_excluido", False):
+        st.success("Registro de ponto excluído.")
+
+    d, t = relatorio(a, b, incluir_id=True)
+    registros_visiveis = d.drop(columns="registro_id")
+    st.dataframe(t, hide_index=True)
+
+    # Descarta a seleção anterior quando o conteúdo da tabela muda.
+    versao = sha256(d.to_json(orient="records").encode("utf-8")).hexdigest()
+    selecao = st.dataframe(
+        registros_visiveis,
+        hide_index=True,
+        selection_mode="single-row",
+        on_select="rerun",
+        key=f"rh_ponto_tabela_{versao}",
+    )
+
+    if selecao.selection.rows:
+        registro = d.iloc[selecao.selection.rows[0]]
+        with st.popover("Excluir registro selecionado", icon=":material/delete:"):
+            entrada = datetime.fromisoformat(registro["entrada"])
+            st.warning(
+                f'Excluir o registro de {registro["funcionario"]} '
+                f'com entrada em {entrada:%d/%m/%Y às %H:%M}?'
+            )
+            if st.button(
+                "Confirmar exclusão",
+                key=f'rh_ponto_excluir_{versao}_{registro["registro_id"]}',
+            ):
+                try:
+                    excluido = excluir_registro_ponto(registro)
+                except sqlite3.Error:
+                    st.error("Não consegui excluir o registro. Tente novamente.")
+                else:
+                    if excluido:
+                        st.session_state["rh_ponto_excluido"] = True
+                        st.rerun()
+                    st.warning("Esse registro foi alterado ou já foi excluído.")
+
+    st.caption(
+        "Saldo em minutos por turno encerrado; não inclui faltas, feriados "
+        "ou regras de convenção coletiva."
+    )
+    st.download_button(
+        "Baixar relatório de ponto",
+        excel(registros_visiveis, t),
+        "ponto_rh.xlsx",
+        key="rh_ponto_download",
+    )
     if st.button('Enviar relatório por e-mail agora'):
         try: enviar(a,b); st.success('Relatório enviado.')
         except Exception: st.error('Falha no envio. Confira a configuração SMTP no servidor.')
